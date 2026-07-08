@@ -1,0 +1,36 @@
+{
+  "bindIP": "0.0.0.0",
+  "serverPort": 53,
+  "zoneList": [
+    {
+      "name": "domain",
+      "enable": true,
+      "priority": 10,
+      "dnsIP": "223.5.5.5",
+      "dnsPort": 53,
+      "ipList": [
+        {
+          "enable": true,
+          "deny": false,
+          "inverseIPList": false,
+          "file": "config/domain_ip_list.txt"
+        }
+      ]
+    },
+    {
+      "name": "other_domain",
+      "enable": true,
+      "priority": 20,
+      "dnsIP": "8.8.8.8",
+      "dnsPort": 53,
+      "ipList": [
+        {
+          "enable": true,
+          "deny": false,
+          "inverseIPList": true,
+          "file": "config/domain_ip_list.txt"
+        }
+      ]
+    }
+  ]
+}

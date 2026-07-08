@@ -1,0 +1,131 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # x86_64
+          - name: x86_64
+            toolchain: x86_64-linux-musl-cross
+            triple: x86_64-linux-musl
+            output: dnsmultizone-linux-x86_64
+
+          # aarch64 (arm64)
+          - name: aarch64
+            toolchain: aarch64-linux-musl-cross
+            triple: aarch64-linux-musl
+            output: dnsmultizone-linux-aarch64
+
+          # armv7 硬浮点 (主流现代 ARM 路由器/设备)
+          - name: armv7-hf
+            toolchain: arm-linux-musleabihf-cross
+            triple: arm-linux-musleabihf
+            output: dnsmultizone-linux-armv7-hf
+
+          # armv5 软浮点 (老旧/低端 ARM 路由器)
+          - name: armv5-sf
+            toolchain: arm-linux-musleabi-cross
+            triple: arm-linux-musleabi
+            output: dnsmultizone-linux-armv5-sf
+
+          # mips 大端 软浮点 (常见无 FPU 路由器 SoC)
+          - name: mips-sf
+            toolchain: mips-linux-muslsf-cross
+            triple: mips-linux-muslsf
+            output: dnsmultizone-linux-mips-sf
+
+          # mipsel 小端 软浮点 (常见无 FPU 路由器 SoC，如 MTK/RALINK)
+          - name: mipsel-sf
+            toolchain: mipsel-linux-muslsf-cross
+            triple: mipsel-linux-muslsf
+            output: dnsmultizone-linux-mipsel-sf
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache musl cross toolchain
+        id: cache-toolchain
+        uses: actions/cache@v4
+        with:
+          path: /opt/cross/${{ matrix.toolchain }}
+          key: musl-cross-${{ matrix.toolchain }}-v1
+
+      - name: Download musl cross toolchain
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          mkdir -p /opt/cross
+          URL_PRIMARY="https://musl.cc/${{ matrix.toolchain }}.tgz"
+          URL_MIRROR="https://more.musl.cc/${{ matrix.toolchain }}.tgz"
+          echo "Downloading toolchain from $URL_PRIMARY"
+          curl -fL --retry 3 --retry-delay 5 -o /tmp/toolchain.tgz "$URL_PRIMARY" \
+            || (echo "primary failed, trying mirror" && curl -fL --retry 3 --retry-delay 5 -o /tmp/toolchain.tgz "$URL_MIRROR")
+          tar -xzf /tmp/toolchain.tgz -C /opt/cross
+          rm -f /tmp/toolchain.tgz
+
+      - name: Build
+        run: |
+          set -e
+          TOOLCHAIN_DIR="/opt/cross/${{ matrix.toolchain }}"
+          export PATH="$TOOLCHAIN_DIR/bin:$PATH"
+          CXX_BIN="${TOOLCHAIN_DIR}/bin/${{ matrix.triple }}-g++"
+          if [ ! -x "$CXX_BIN" ]; then
+            echo "expected compiler not found at $CXX_BIN, listing bin dir:"
+            ls "$TOOLCHAIN_DIR/bin"
+            exit 1
+          fi
+          make clean
+          make CXX="$CXX_BIN" \
+               CXXFLAGS="-Wall -std=c++11 -Wno-format-security" \
+               CPPFLAGS="-O2" \
+               LDFLAGS="-static -s"
+          file dnsmultizone
+          mkdir -p dist
+          cp dnsmultizone dist/${{ matrix.output }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.output }}
+          path: dist/${{ matrix.output }}
+          if-no-files-found: error
+
+  release:
+    name: Create Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f -exec cp {} release/ \;
+          cd release && sha256sum * > SHA256SUMS.txt
+          ls -la
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
