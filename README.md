@@ -45,20 +45,18 @@ See [`config/DNSMZConfig.json.example`](config/DNSMZConfig.json.example). Field 
 
 ### Cross-compiling / static multi-arch binaries
 
-The project cross-compiles using [dockcross](https://github.com/dockcross/dockcross) Docker images pulled from Docker Hub, so CI doesn't depend on any single third-party download host (unlike ad-hoc toolchain tarballs from sites such as musl.cc, which are known to be flaky). Where a musl-based image is available the build is fully static with no libc dependency at all; where only a glibc image is available (x86_64, mips, mipsel) the binary is still linked with `-static`, so it has no *dynamic* dependency on the target's libc version either way — either is safe to copy straight onto routers / embedded devices.
+The project cross-compiles using the [`abcfy2/muslcc-toolchain-ubuntu`](https://hub.docker.com/r/abcfy2/muslcc-toolchain-ubuntu) Docker image, which repackages the full [musl.cc](https://musl.cc) toolchain catalog and publishes it on Docker Hub (one image tag per target triple). This avoids depending on direct HTTP downloads from musl.cc (which are known to hang / time out) while still getting a fully static musl build — no libc dependency at all — for every architecture, including x86_64 and soft-float MIPS, which aren't available as musl images anywhere else.
 
 GitHub Actions (`.github/workflows/release.yml`) automatically builds static binaries for the following architectures:
 
-| Arch | Notes | Docker image | Artifact name |
+| Arch | Notes | Toolchain tag | Artifact name |
 |---|---|---|---|
-| x86_64 | General PC / server (glibc, statically linked) | `dockcross/linux-x64` | `dnsmultizone-linux-x86_64` |
-| aarch64 | 64-bit ARM (Raspberry Pi 4, newer routers), musl | `dockcross/linux-arm64-musl` | `dnsmultizone-linux-aarch64` |
-| armv7-hf | 32-bit ARM hard-float (mainstream modern router SoCs), musl | `dockcross/linux-armv7l-musl` | `dnsmultizone-linux-armv7-hf` |
-| armv5-sf | 32-bit ARM soft-float (old / low-end routers), musl | `dockcross/linux-armv5-musl` | `dnsmultizone-linux-armv5-sf` |
-| mips | MIPS big-endian, glibc (dockcross has no musl/soft-float MIPS image) | `dockcross/linux-mips-lts` | `dnsmultizone-linux-mips` |
-| mipsel | MIPS little-endian, glibc, common on MTK/Ralink router SoCs | `dockcross/linux-mipsel-lts` | `dnsmultizone-linux-mipsel` |
-
-> **Note on MIPS:** dockcross currently only ships glibc images for MIPS, not musl/soft-float ones. If your router's MIPS SoC has no FPU and needs a true soft-float build, you'll need a soft-float-capable toolchain (e.g. a `mips(el)-linux-muslsf` cross compiler) and can adapt the `Build` step in the workflow / `scripts/build.sh` accordingly — the application code itself has no architecture-specific requirements.
+| x86_64 | General PC / server | `x86_64-linux-musl` | `dnsmultizone-linux-x86_64` |
+| aarch64 | 64-bit ARM (Raspberry Pi 4, newer routers) | `aarch64-linux-musl` | `dnsmultizone-linux-aarch64` |
+| armv7-hf | 32-bit ARM hard-float (mainstream modern router SoCs) | `arm-linux-musleabihf` | `dnsmultizone-linux-armv7-hf` |
+| armv5-sf | 32-bit ARM soft-float (old / low-end routers) | `arm-linux-musleabi` | `dnsmultizone-linux-armv5-sf` |
+| mips-sf | MIPS big-endian soft-float (FPU-less router SoCs) | `mips-linux-muslsf` | `dnsmultizone-linux-mips-sf` |
+| mipsel-sf | MIPS little-endian soft-float (common on MTK/Ralink routers) | `mipsel-linux-muslsf` | `dnsmultizone-linux-mipsel-sf` |
 
 **Triggers:**
 
@@ -139,20 +137,18 @@ make
 
 ### 交叉编译 / 多架构静态可执行文件
 
-项目使用 [dockcross](https://github.com/dockcross/dockcross) 提供的 Docker 交叉编译镜像（从 Docker Hub 拉取），不再依赖 musl.cc 这类单点第三方站点直连下载工具链压缩包（该站点稳定性较差，经常出现连接超时/卡住）。有 musl 镜像的架构编译出的是完全静态、不依赖任何 libc 的二进制；没有 musl 镜像、只能用 glibc 镜像的架构（x86_64、mips、mipsel）也会用 `-static` 链接，同样不依赖目标系统的动态库版本，两种情况都可以直接拷贝到路由器 / 嵌入式设备上运行。
+项目使用 [`abcfy2/muslcc-toolchain-ubuntu`](https://hub.docker.com/r/abcfy2/muslcc-toolchain-ubuntu) 这个 Docker 镜像进行交叉编译——它把 [musl.cc](https://musl.cc) 的完整工具链目录原样打包分发到了 Docker Hub 上（一个工具链三元组对应一个镜像 tag）。这样既避免了直连 musl.cc 下载（该站点经常连接卡住/超时）的不稳定问题，又能给全部架构都编出真正的静态 musl 二进制——完全不依赖任何 libc，包括 x86_64 和 MIPS 软浮点这两个在其他常见交叉编译 Docker 镜像方案（如 dockcross）里都拿不到 musl 版本的架构。
 
 GitHub Actions（`.github/workflows/release.yml`）会自动为以下架构构建静态二进制：
 
-| 架构 | 说明 | Docker 镜像 | 产物文件名 |
+| 架构 | 说明 | 工具链 tag | 产物文件名 |
 |---|---|---|---|
-| x86_64 | 通用 PC / 服务器（glibc，静态链接） | `dockcross/linux-x64` | `dnsmultizone-linux-x86_64` |
-| aarch64 | 64 位 ARM（树莓派4等/新款路由器），musl | `dockcross/linux-arm64-musl` | `dnsmultizone-linux-aarch64` |
-| armv7-hf | 32 位 ARM 硬浮点（主流现代路由器 SoC），musl | `dockcross/linux-armv7l-musl` | `dnsmultizone-linux-armv7-hf` |
-| armv5-sf | 32 位 ARM 软浮点（老旧/低端路由器），musl | `dockcross/linux-armv5-musl` | `dnsmultizone-linux-armv5-sf` |
-| mips | MIPS 大端，glibc（dockcross 未提供 mips 的 musl/软浮点镜像） | `dockcross/linux-mips-lts` | `dnsmultizone-linux-mips` |
-| mipsel | MIPS 小端，glibc，常见于 MTK/Ralink 等路由器 SoC | `dockcross/linux-mipsel-lts` | `dnsmultizone-linux-mipsel` |
-
-> **关于 MIPS 的说明：** dockcross 目前只提供 MIPS 的 glibc 镜像，没有 musl / 软浮点镜像。如果你的路由器 MIPS 芯片没有 FPU、必须用软浮点编译，需要自行找一个支持软浮点的交叉工具链（例如 `mips(el)-linux-muslsf` 系列），并相应调整 workflow / `scripts/build.sh` 里的编译步骤——项目代码本身不含任何架构相关的特殊要求，换工具链即可。
+| x86_64 | 通用 PC / 服务器 | `x86_64-linux-musl` | `dnsmultizone-linux-x86_64` |
+| aarch64 | 64 位 ARM（树莓派4等/新款路由器） | `aarch64-linux-musl` | `dnsmultizone-linux-aarch64` |
+| armv7-hf | 32 位 ARM 硬浮点（主流现代路由器 SoC） | `arm-linux-musleabihf` | `dnsmultizone-linux-armv7-hf` |
+| armv5-sf | 32 位 ARM 软浮点（老旧/低端路由器） | `arm-linux-musleabi` | `dnsmultizone-linux-armv5-sf` |
+| mips-sf | MIPS 大端软浮点（无 FPU 路由器 SoC） | `mips-linux-muslsf` | `dnsmultizone-linux-mips-sf` |
+| mipsel-sf | MIPS 小端软浮点（MTK/Ralink 等常见路由器 SoC） | `mipsel-linux-muslsf` | `dnsmultizone-linux-mipsel-sf` |
 
 **触发方式：**
 

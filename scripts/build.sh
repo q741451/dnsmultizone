@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # 本地多架构静态交叉编译脚本（与 .github/workflows/release.yml 使用相同的
-# dockcross Docker 交叉编译镜像，避免依赖 musl.cc 这类不稳定的第三方站点）
+# abcfy2/muslcc-toolchain-ubuntu Docker 镜像 —— 它把 musl.cc 的完整工具链
+# 打包分发到了 Docker Hub 上，tag 即工具链三元组名，避免直连 musl.cc 不稳定）
 #
 # 依赖：本机已安装并可用 Docker。
 #
@@ -15,15 +16,16 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
+DOCKER_IMAGE_BASE="abcfy2/muslcc-toolchain-ubuntu"
 
-# name : docker镜像 : 产物文件名
+# name : 工具链三元组tag : 产物文件名
 TARGETS=(
-  "x86_64:dockcross/linux-x64:dnsmultizone-linux-x86_64"
-  "aarch64:dockcross/linux-arm64-musl:dnsmultizone-linux-aarch64"
-  "armv7-hf:dockcross/linux-armv7l-musl:dnsmultizone-linux-armv7-hf"
-  "armv5-sf:dockcross/linux-armv5-musl:dnsmultizone-linux-armv5-sf"
-  "mips:dockcross/linux-mips-lts:dnsmultizone-linux-mips"
-  "mipsel:dockcross/linux-mipsel-lts:dnsmultizone-linux-mipsel"
+  "x86_64:x86_64-linux-musl:dnsmultizone-linux-x86_64"
+  "aarch64:aarch64-linux-musl:dnsmultizone-linux-aarch64"
+  "armv7-hf:arm-linux-musleabihf:dnsmultizone-linux-armv7-hf"
+  "armv5-sf:arm-linux-musleabi:dnsmultizone-linux-armv5-sf"
+  "mips-sf:mips-linux-muslsf:dnsmultizone-linux-mips-sf"
+  "mipsel-sf:mipsel-linux-muslsf:dnsmultizone-linux-mipsel-sf"
 )
 
 FILTER="${1:-}"
@@ -36,14 +38,15 @@ fi
 mkdir -p "$DIST_DIR"
 
 for entry in "${TARGETS[@]}"; do
-  IFS=":" read -r name image output <<< "$entry"
+  IFS=":" read -r name tag output <<< "$entry"
 
   if [[ -n "$FILTER" && "$FILTER" != "$name" ]]; then
     continue
   fi
 
-  echo "==> [$name] 拉取镜像: $image"
-  docker pull "$image"
+  IMAGE="${DOCKER_IMAGE_BASE}:${tag}"
+  echo "==> [$name] 拉取镜像: $IMAGE"
+  docker pull "$IMAGE"
 
   echo "==> [$name] 编译中"
   (
@@ -52,8 +55,8 @@ for entry in "${TARGETS[@]}"; do
     docker run --rm \
       -v "$ROOT_DIR":/work \
       -w /work \
-      "$image" \
-      bash -c 'make CXX=$CXX CXXFLAGS="-Wall -std=c++11 -Wno-format-security" CPPFLAGS=-O2 LDFLAGS="-static -s"'
+      "$IMAGE" \
+      bash -c "make CXX=${tag}-g++ CXXFLAGS='-Wall -std=c++11 -Wno-format-security' CPPFLAGS=-O2 LDFLAGS='-static -s'"
     file dnsmultizone
     mkdir -p "$DIST_DIR"
     cp dnsmultizone "$DIST_DIR/$output"

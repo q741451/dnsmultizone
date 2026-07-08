@@ -17,42 +17,44 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # x86_64 (glibc; dockcross has no musl x86_64 image, -static glibc works fine here)
+          # 所有架构统一使用 abcfy2/muslcc-toolchain-ubuntu 这个 Docker Hub 镜像，
+          # 它把 musl.cc 的完整工具链目录原样打包分发，tag 就是工具链三元组名。
+          # 这样既避免了直连 musl.cc 下载不稳定的问题，也能拿到全架构的 musl 静态编译
+          # （包括 dockcross 官方镜像不提供的 x86_64-musl 和 mips 软浮点）。
           - name: x86_64
-            image: dockcross/linux-x64
+            tag: x86_64-linux-musl
             output: dnsmultizone-linux-x86_64
 
-          # aarch64 / arm64 (musl)
           - name: aarch64
-            image: dockcross/linux-arm64-musl
+            tag: aarch64-linux-musl
             output: dnsmultizone-linux-aarch64
 
-          # armv7 硬浮点，主流现代 ARM 路由器/设备 (musl)
+          # armv7 硬浮点，主流现代 ARM 路由器/设备
           - name: armv7-hf
-            image: dockcross/linux-armv7l-musl
+            tag: arm-linux-musleabihf
             output: dnsmultizone-linux-armv7-hf
 
-          # armv5 软浮点，老旧/低端 ARM 路由器 (musl)
+          # armv5 软浮点，老旧/低端 ARM 路由器
           - name: armv5-sf
-            image: dockcross/linux-armv5-musl
+            tag: arm-linux-musleabi
             output: dnsmultizone-linux-armv5-sf
 
-          # mips 大端，glibc 2.28 (dockcross 未提供 mips 的 musl/软浮点镜像)
-          - name: mips
-            image: dockcross/linux-mips-lts
-            output: dnsmultizone-linux-mips
+          # mips 大端软浮点，常见无 FPU 路由器 SoC
+          - name: mips-sf
+            tag: mips-linux-muslsf
+            output: dnsmultizone-linux-mips-sf
 
-          # mipsel 小端，glibc 2.28，常见于 MTK/Ralink 路由器 SoC
-          - name: mipsel
-            image: dockcross/linux-mipsel-lts
-            output: dnsmultizone-linux-mipsel
+          # mipsel 小端软浮点，MTK/Ralink 等常见路由器 SoC
+          - name: mipsel-sf
+            tag: mipsel-linux-muslsf
+            output: dnsmultizone-linux-mipsel-sf
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Pull cross toolchain image
-        run: docker pull ${{ matrix.image }}
+        run: docker pull abcfy2/muslcc-toolchain-ubuntu:${{ matrix.tag }}
 
       - name: Build
         run: |
@@ -61,8 +63,8 @@ jobs:
           docker run --rm \
             -v "${{ github.workspace }}":/work \
             -w /work \
-            ${{ matrix.image }} \
-            bash -c 'make CXX=$CXX CXXFLAGS="-Wall -std=c++11 -Wno-format-security" CPPFLAGS=-O2 LDFLAGS="-static -s"'
+            abcfy2/muslcc-toolchain-ubuntu:${{ matrix.tag }} \
+            bash -c 'make CXX=${{ matrix.tag }}-g++ CXXFLAGS="-Wall -std=c++11 -Wno-format-security" CPPFLAGS=-O2 LDFLAGS="-static -s"'
           file dnsmultizone
           mkdir -p dist
           cp dnsmultizone dist/${{ matrix.output }}
