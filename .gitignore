@@ -1,7 +1,5 @@
 build/
 dist/
-.cache/
-.cross/
 dnsmultizone
 *.o
 *.log

@@ -17,82 +17,52 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # x86_64
+          # x86_64 (glibc; dockcross has no musl x86_64 image, -static glibc works fine here)
           - name: x86_64
-            toolchain: x86_64-linux-musl-cross
-            triple: x86_64-linux-musl
+            image: dockcross/linux-x64
             output: dnsmultizone-linux-x86_64
 
-          # aarch64 (arm64)
+          # aarch64 / arm64 (musl)
           - name: aarch64
-            toolchain: aarch64-linux-musl-cross
-            triple: aarch64-linux-musl
+            image: dockcross/linux-arm64-musl
             output: dnsmultizone-linux-aarch64
 
-          # armv7 硬浮点 (主流现代 ARM 路由器/设备)
+          # armv7 硬浮点，主流现代 ARM 路由器/设备 (musl)
           - name: armv7-hf
-            toolchain: arm-linux-musleabihf-cross
-            triple: arm-linux-musleabihf
+            image: dockcross/linux-armv7l-musl
             output: dnsmultizone-linux-armv7-hf
 
-          # armv5 软浮点 (老旧/低端 ARM 路由器)
+          # armv5 软浮点，老旧/低端 ARM 路由器 (musl)
           - name: armv5-sf
-            toolchain: arm-linux-musleabi-cross
-            triple: arm-linux-musleabi
+            image: dockcross/linux-armv5-musl
             output: dnsmultizone-linux-armv5-sf
 
-          # mips 大端 软浮点 (常见无 FPU 路由器 SoC)
-          - name: mips-sf
-            toolchain: mips-linux-muslsf-cross
-            triple: mips-linux-muslsf
-            output: dnsmultizone-linux-mips-sf
+          # mips 大端，glibc 2.28 (dockcross 未提供 mips 的 musl/软浮点镜像)
+          - name: mips
+            image: dockcross/linux-mips-lts
+            output: dnsmultizone-linux-mips
 
-          # mipsel 小端 软浮点 (常见无 FPU 路由器 SoC，如 MTK/RALINK)
-          - name: mipsel-sf
-            toolchain: mipsel-linux-muslsf-cross
-            triple: mipsel-linux-muslsf
-            output: dnsmultizone-linux-mipsel-sf
+          # mipsel 小端，glibc 2.28，常见于 MTK/Ralink 路由器 SoC
+          - name: mipsel
+            image: dockcross/linux-mipsel-lts
+            output: dnsmultizone-linux-mipsel
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Cache musl cross toolchain
-        id: cache-toolchain
-        uses: actions/cache@v4
-        with:
-          path: /opt/cross/${{ matrix.toolchain }}
-          key: musl-cross-${{ matrix.toolchain }}-v1
-
-      - name: Download musl cross toolchain
-        if: steps.cache-toolchain.outputs.cache-hit != 'true'
-        run: |
-          set -e
-          mkdir -p /opt/cross
-          URL_PRIMARY="https://musl.cc/${{ matrix.toolchain }}.tgz"
-          URL_MIRROR="https://more.musl.cc/${{ matrix.toolchain }}.tgz"
-          echo "Downloading toolchain from $URL_PRIMARY"
-          curl -fL --retry 3 --retry-delay 5 -o /tmp/toolchain.tgz "$URL_PRIMARY" \
-            || (echo "primary failed, trying mirror" && curl -fL --retry 3 --retry-delay 5 -o /tmp/toolchain.tgz "$URL_MIRROR")
-          tar -xzf /tmp/toolchain.tgz -C /opt/cross
-          rm -f /tmp/toolchain.tgz
+      - name: Pull cross toolchain image
+        run: docker pull ${{ matrix.image }}
 
       - name: Build
         run: |
           set -e
-          TOOLCHAIN_DIR="/opt/cross/${{ matrix.toolchain }}"
-          export PATH="$TOOLCHAIN_DIR/bin:$PATH"
-          CXX_BIN="${TOOLCHAIN_DIR}/bin/${{ matrix.triple }}-g++"
-          if [ ! -x "$CXX_BIN" ]; then
-            echo "expected compiler not found at $CXX_BIN, listing bin dir:"
-            ls "$TOOLCHAIN_DIR/bin"
-            exit 1
-          fi
           make clean
-          make CXX="$CXX_BIN" \
-               CXXFLAGS="-Wall -std=c++11 -Wno-format-security" \
-               CPPFLAGS="-O2" \
-               LDFLAGS="-static -s"
+          docker run --rm \
+            -v "${{ github.workspace }}":/work \
+            -w /work \
+            ${{ matrix.image }} \
+            bash -c 'make CXX=$CXX CXXFLAGS="-Wall -std=c++11 -Wno-format-security" CPPFLAGS=-O2 LDFLAGS="-static -s"'
           file dnsmultizone
           mkdir -p dist
           cp dnsmultizone dist/${{ matrix.output }}
