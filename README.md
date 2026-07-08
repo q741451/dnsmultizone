@@ -47,7 +47,7 @@ See [`config/DNSMZConfig.json.example`](config/DNSMZConfig.json.example). Field 
 
 The project cross-compiles using the [`abcfy2/muslcc-toolchain-ubuntu`](https://hub.docker.com/r/abcfy2/muslcc-toolchain-ubuntu) Docker image, which repackages the full [musl.cc](https://musl.cc) toolchain catalog and publishes it on Docker Hub (one image tag per target triple). This avoids depending on direct HTTP downloads from musl.cc (which are known to hang / time out) while still getting a fully static musl build — no libc dependency at all — for every architecture, including x86_64 and soft-float MIPS, which aren't available as musl images anywhere else.
 
-GitHub Actions (`.github/workflows/release.yml`) automatically builds static binaries for the following architectures:
+GitHub Actions (`.github/workflows/release.yml`) automatically builds static binaries for the following architectures. Note: this image only ships the bare cross-compiler, not a full build environment, so each job installs `make` via `apt-get` inside the container before building.
 
 | Arch | Notes | Toolchain tag | Artifact name |
 |---|---|---|---|
@@ -139,7 +139,7 @@ make
 
 项目使用 [`abcfy2/muslcc-toolchain-ubuntu`](https://hub.docker.com/r/abcfy2/muslcc-toolchain-ubuntu) 这个 Docker 镜像进行交叉编译——它把 [musl.cc](https://musl.cc) 的完整工具链目录原样打包分发到了 Docker Hub 上（一个工具链三元组对应一个镜像 tag）。这样既避免了直连 musl.cc 下载（该站点经常连接卡住/超时）的不稳定问题，又能给全部架构都编出真正的静态 musl 二进制——完全不依赖任何 libc，包括 x86_64 和 MIPS 软浮点这两个在其他常见交叉编译 Docker 镜像方案（如 dockcross）里都拿不到 musl 版本的架构。
 
-GitHub Actions（`.github/workflows/release.yml`）会自动为以下架构构建静态二进制：
+GitHub Actions（`.github/workflows/release.yml`）会自动为以下架构构建静态二进制。提醒一下：这个镜像只打包了裸交叉编译器，没有完整构建环境，所以每个 job 会在容器内先用 `apt-get` 装一下 `make` 再编译。
 
 | 架构 | 说明 | 工具链 tag | 产物文件名 |
 |---|---|---|---|

@@ -56,7 +56,7 @@ for entry in "${TARGETS[@]}"; do
       -v "$ROOT_DIR":/work \
       -w /work \
       "$IMAGE" \
-      bash -c "make CXX=${tag}-g++ CXXFLAGS='-Wall -std=c++11 -Wno-format-security' CPPFLAGS=-O2 LDFLAGS='-static -s'"
+      bash -c "export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq --no-install-recommends make >/dev/null && make CXX=${tag}-g++ CXXFLAGS='-Wall -std=c++11 -Wno-format-security' CPPFLAGS=-O2 LDFLAGS='-static -s'"
     file dnsmultizone
     mkdir -p "$DIST_DIR"
     cp dnsmultizone "$DIST_DIR/$output"

@@ -64,7 +64,7 @@ jobs:
             -v "${{ github.workspace }}":/work \
             -w /work \
             abcfy2/muslcc-toolchain-ubuntu:${{ matrix.tag }} \
-            bash -c 'make CXX=${{ matrix.tag }}-g++ CXXFLAGS="-Wall -std=c++11 -Wno-format-security" CPPFLAGS=-O2 LDFLAGS="-static -s"'
+            bash -c 'export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq --no-install-recommends make >/dev/null && make CXX=${{ matrix.tag }}-g++ CXXFLAGS="-Wall -std=c++11 -Wno-format-security" CPPFLAGS=-O2 LDFLAGS="-static -s"'
           file dnsmultizone
           mkdir -p dist
           cp dnsmultizone dist/${{ matrix.output }}
