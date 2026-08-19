@@ -5,7 +5,7 @@ class InterfaceServerConnect
 {
 public:
 	virtual void ServerDisconnect() = 0;
-	virtual void ServerNewWork(unsigned short nID, bool bIsARecord, std::string &sDNSData) = 0;
+	virtual void ServerNewWork(unsigned short nID, unsigned short uQType, std::string &sDNSData) = 0;
 };
 
 class ServerConnect : public BaseConnect

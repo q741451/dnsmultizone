@@ -27,12 +27,12 @@ public:
 	{
 		m_nID = 0;
 		m_nMaxDoneIndex = 0;
-		m_bIsA = true;
+		m_uQType = 0;
 		m_bIsDone = false;
 	}
 	unsigned short	m_nID;
 	unsigned int	m_nMaxDoneIndex;
-	bool			m_bIsA;
+	unsigned short	m_uQType;
 	bool			m_bIsDone;
 	std::vector<std::shared_ptr<DNSQueryResultItem>> m_vsDNSQueryResultItems;
 };

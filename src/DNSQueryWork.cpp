@@ -109,7 +109,7 @@ void DNSQureyWork::ServerDisconnect()
 		m_ifInterface->DNSQureyWorkClose(m_spServerConnect->GetSockFd());
 }
 
-void DNSQureyWork::ServerNewWork(unsigned short nID, bool bIsARecord, std::string &sDNSData)
+void DNSQureyWork::ServerNewWork(unsigned short nID, unsigned short uQType, std::string &sDNSData)
 {
 	std::map<unsigned short, std::shared_ptr<DNSQureyWorkItem>>::iterator iterDNSQureyWorkItem;
 	std::vector<std::shared_ptr<DNSConnect>>::iterator iterDNSConnect;
@@ -148,7 +148,7 @@ void DNSQureyWork::ServerNewWork(unsigned short nID, bool bIsARecord, std::strin
 		// 创建一套，全部发一遍
 		spDNSQureyWorkItem = std::make_shared<DNSQureyWorkItem>();
 		spDNSQureyWorkItem->m_nID = nID;
-		spDNSQureyWorkItem->m_bIsA = bIsARecord;
+		spDNSQureyWorkItem->m_uQType = uQType;
 		for (iterDNSConnect = m_vsDNSConnects.begin(); iterDNSConnect != m_vsDNSConnects.end(); ++iterDNSConnect)
 		{
 			spDNSQueryResultItem = std::make_shared<DNSQueryResultItem>();
@@ -174,7 +174,7 @@ void DNSQureyWork::DNSQueryDisconnect(unsigned int nIndex)
 	}
 }
 
-void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, bool bIsA, std::list<unsigned int> &luIPs, std::string &sDNSData)
+void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsigned short uQType, bool bIsParseOK, std::list<unsigned int> &luIPs, std::string &sDNSData)
 {
 	std::map<unsigned short, std::shared_ptr<DNSQureyWorkItem>>::iterator iterDNSQureyWorkItem;
 	std::list<unsigned int>::iterator iterIP;
@@ -188,22 +188,20 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, bool 
 	if (iterDNSQureyWorkItem->second->m_bIsDone)
 		return;
 
-	if (iterDNSQureyWorkItem->second->m_bIsA == false)
-	{
-		if (nIndex == 0)
-		{
-			// 非A记录，只处理首选DNS
-			iterDNSQureyWorkItem->second->m_bIsDone = true;
-			iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_sDNSData = sDNSData;
-			m_spServerConnect->m_bDisconnectTag = true;
-			m_spServerConnect->SendDNSResultBuffer(sDNSData);
-		}
-		return;
-	}
-
 	if(sDNSData.size() == 0)
 		iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_ERROR;
-	else if (bIsA == false)
+	else if (Rfc1035::IsIPBearingType(iterDNSQureyWorkItem->second->m_uQType) == false)
+	{
+		// 该类型不携带任何 IP，判不出归属，也就没法说它不属于本域，
+		// 按优先级取用即可
+		iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_MATCH;
+	}
+	else if (bIsParseOK == false)
+	{
+		// 没看懂的应答不能升格成匹配，但仍可作兜底
+		iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_NOT_MATCH;
+	}
+	else if (Rfc1035::IsIPBearingType(uQType) == false)
 	{
 		iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_NOT_MATCH;
 	}
@@ -220,8 +218,17 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, bool 
 			iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_NOT_MATCH;
 		iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_luIPs = luIPs;
 	}
-	else if(luIPs.size() == 0)
+	else if (iterDNSQureyWorkItem->second->m_uQType == Rfc1035::DEF_TYPE_A)
+	{
+		// A 记录本就该给出地址，没给说明本域服务不了这个名字，让给下一个
 		iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_NOT_MATCH;
+	}
+	else
+	{
+		// SVCB/HTTPS 的 ipv4hint 是可选参数，没有不算失败，
+		// 同样判不出归属，按优先级取用
+		iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_MATCH;
+	}
 
 	iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_sDNSData = sDNSData;
 	

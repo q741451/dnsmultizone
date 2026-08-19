@@ -164,18 +164,18 @@ void DNSConnect::OnRecvData()
 	std::string sName;
 	std::string sDNSData;
 	unsigned short uID = 0;
-	bool bIsA = false;
+	unsigned short uQType = 0;
 	std::list<unsigned int> luIPs;
-	// bool ret = false;
+	bool bIsParseOK = false;
 
 	sDNSData = m_sReadBuff;
 
-	if (Rfc1035::ParseResponseA(sDNSData, &uID, &uFlag, sName, &bIsA, luIPs) != true)
+	if (Rfc1035::ParseResponseA(sDNSData, &uID, &uFlag, sName, &uQType, luIPs) != true)
 		goto end;
 
-	// ret = true;
+	bIsParseOK = true;
 end:
 	if (m_ifInterface)
-		m_ifInterface->DNSQueryResult(m_nIndex, uID, bIsA, luIPs, sDNSData);
+		m_ifInterface->DNSQueryResult(m_nIndex, uID, uQType, bIsParseOK, luIPs, sDNSData);
 }
 

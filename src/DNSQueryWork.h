@@ -21,11 +21,11 @@ public:
 
 	// Server
 	virtual void ServerDisconnect();
-	virtual void ServerNewWork(unsigned short nID, bool bIsARecord, std::string &sDNSData);
+	virtual void ServerNewWork(unsigned short nID, unsigned short uQType, std::string &sDNSData);
 
 	// DNS
 	virtual void DNSQueryDisconnect(unsigned int nIndex);
-	virtual void DNSQueryResult(unsigned int nIndex, unsigned short nID, bool bIsA, std::list<unsigned int> &luIPs, std::string &sDNSData);
+	virtual void DNSQueryResult(unsigned int nIndex, unsigned short nID, unsigned short uQType, bool bIsParseOK, std::list<unsigned int> &luIPs, std::string &sDNSData);
 
 	unsigned long long							m_llLastTouch;
 	std::shared_ptr<ServerConnect>				m_spServerConnect;

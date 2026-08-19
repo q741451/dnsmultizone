@@ -224,19 +224,19 @@ void ServerConnect::OnRecvData()
 	std::string sName;
 	std::string sDNSData;
 	unsigned short uID = 0;
-	bool bIsA = false;
+	unsigned short uQType = 0;
 	std::list<unsigned int> luIPs;
 	// bool ret = false;
 
 	sDNSData = m_sReadBuff;
 
-	if (Rfc1035::ParseRequestA(sDNSData, &uID, &uFlag, sName, &bIsA) != true)
+	if (Rfc1035::ParseRequestA(sDNSData, &uID, &uFlag, sName, &uQType) != true)
 		goto end;
 
 	// ret = true;
 end:
 	if (m_ifInterface)
-		m_ifInterface->ServerNewWork(uID, bIsA, sDNSData);
+		m_ifInterface->ServerNewWork(uID, uQType, sDNSData);
 }
 
 

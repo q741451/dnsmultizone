@@ -1,6 +1,11 @@
 #include "stdafx.h"
 
-bool Rfc1035::ParseRequestA(std::string &sBuffer, unsigned short *uID, unsigned short *uFlag, std::string &sName, bool *bIsA)
+bool Rfc1035::IsIPBearingType(unsigned short uQType)
+{
+	return (uQType == DEF_TYPE_A || uQType == DEF_TYPE_SVCB || uQType == DEF_TYPE_HTTPS);
+}
+
+bool Rfc1035::ParseRequestA(std::string &sBuffer, unsigned short *uID, unsigned short *uFlag, std::string &sName, unsigned short *uQType)
 {
 	bool ret = false;
 	unsigned short uAnswers = 0;
@@ -8,7 +13,7 @@ bool Rfc1035::ParseRequestA(std::string &sBuffer, unsigned short *uID, unsigned 
 
 	aBuffer.Assign((char*)sBuffer.c_str(), sBuffer.size());
 
-	if (ParseRequestAAndAnswers(aBuffer, uID, uFlag, &uAnswers, sName, bIsA) != true)
+	if (ParseRequestAAndAnswers(aBuffer, uID, uFlag, &uAnswers, sName, uQType) != true)
 		goto end;
 
 	ret = true;
@@ -16,7 +21,7 @@ end:
 	return ret;
 }
 
-bool Rfc1035::ParseResponseA(std::string &sBuffer, unsigned short *uID, unsigned short *uFlag, std::string &sName, bool *bIsA, std::list<unsigned int> &luIPs)
+bool Rfc1035::ParseResponseA(std::string &sBuffer, unsigned short *uID, unsigned short *uFlag, std::string &sName, unsigned short *uQType, std::list<unsigned int> &luIPs)
 {
 	bool ret = false;
 	int i = 0;
@@ -30,7 +35,7 @@ bool Rfc1035::ParseResponseA(std::string &sBuffer, unsigned short *uID, unsigned
 
 	aBuffer.Assign((char*)sBuffer.c_str(), sBuffer.size());
 
-	if (ParseRequestAAndAnswers(aBuffer, uID, uFlag, &uAnswers, sName, bIsA) != true)
+	if (ParseRequestAAndAnswers(aBuffer, uID, uFlag, &uAnswers, sName, uQType) != true)
 		goto end;
 
 	for (i = 0; i < uAnswers; i++)
@@ -61,11 +66,18 @@ bool Rfc1035::ParseResponseA(std::string &sBuffer, unsigned short *uID, unsigned
 
 			switch (uType)
 			{
-			case 0x0005: // CNAME
+			case DEF_TYPE_CNAME: // CNAME
 				break;
-			case 0x0001: // A
+			case DEF_TYPE_A: // A
 				if(sData.size() == sizeof(unsigned int))
 					luIPs.push_back(ntohl(*(unsigned int*)sData.c_str()));
+				break;
+			case DEF_TYPE_SVCB: // SVCB
+			case DEF_TYPE_HTTPS: // HTTPS
+				// ipv4hint 是客户端可能直接拿去建连的地址，
+				// 因此和 A 记录一样要过 ipList 校验
+				if (ParseSvcParamIPv4Hint(sData, luIPs) != true)
+					goto end;
 				break;
 			default:
 				goto end;
@@ -78,7 +90,56 @@ end:
 	return ret;
 }
 
-bool Rfc1035::ParseRequestAAndAnswers(AutoBuffer &aBuffer, unsigned short *uID, unsigned short *uFlag, unsigned short *uAnswers, std::string &sName, bool *bIsA)
+bool Rfc1035::ParseSvcParamIPv4Hint(std::string &sData, std::list<unsigned int> &luIPs)
+{
+	bool ret = false;
+	unsigned short uPriority = 0;
+	unsigned short uKey = 0;
+	unsigned short uLen = 0;
+	std::string sValue;
+	AutoBuffer aBuffer;
+
+	aBuffer.Assign((char*)sData.c_str(), sData.size());
+
+	// RDATA 结构：SvcPriority + TargetName + 若干 SvcParam，见 RFC 9460
+	if (aBuffer.ReadUINT16(&uPriority) != true)
+		goto end;
+
+	if (SkipBufferName(aBuffer) != true)
+		goto end;
+
+	while (aBuffer.GetSize() - aBuffer.m_szOffset >= sizeof(unsigned short) * 2)
+	{
+		if (aBuffer.ReadUINT16(&uKey) != true)
+			goto end;
+
+		if (aBuffer.ReadUINT16(&uLen) != true)
+			goto end;
+
+		sValue.resize(uLen);
+		if (uLen && aBuffer.ReadBuffer((char*)sValue.c_str(), uLen) != true)
+			goto end;
+
+		if (uKey != DEF_SVCPARAM_IPV4HINT)
+			continue;
+
+		{
+			// Assign 不会重置偏移，每个参数都要用新的读取器
+			AutoBuffer aHint;
+			unsigned int uIP = 0;
+
+			aHint.Assign((char*)sValue.c_str(), sValue.size());
+			while (aHint.ReadUINT32(&uIP) == true)
+				luIPs.push_back(uIP);
+		}
+	}
+
+	ret = true;
+end:
+	return ret;
+}
+
+bool Rfc1035::ParseRequestAAndAnswers(AutoBuffer &aBuffer, unsigned short *uID, unsigned short *uFlag, unsigned short *uAnswers, std::string &sName, unsigned short *uQType)
 {
 	bool ret = false;
 	unsigned short uQuestions = 0;
@@ -116,10 +177,7 @@ bool Rfc1035::ParseRequestAAndAnswers(AutoBuffer &aBuffer, unsigned short *uID, 
 	if (aBuffer.ReadUINT16(&uType) != true)
 		goto end;
 
-	if (uType == 0x0001)
-		*bIsA = true;
-	else
-		*bIsA = false;
+	*uQType = uType;
 
 	if (aBuffer.ReadUINT16(&uClass) != true)
 		goto end;
