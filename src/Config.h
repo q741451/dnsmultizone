@@ -14,10 +14,10 @@ public:
 
 	void RefreshResolvConf();
 
-	// 传入配置
-	std::string m_sFileConfig;			// 详细配置
-	bool		m_bIsBackMode;			// 是否后台模式
-	std::string m_sFileLog;				// 后台Log位置
+	// 浼犲叆閰嶇疆
+	std::string m_sFileConfig;			// 璇︾粏閰嶇疆
+	bool		m_bIsBackMode;			// 鏄惁鍚庡彴妯″紡
+	std::string m_sFileLog;				// 鍚庡彴Log浣嶇疆
 
 	// Json
 	struct in_addr m_iaBindAddress;

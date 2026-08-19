@@ -34,9 +34,9 @@ bool FileINotify::Init(EPOLL_FD fdEPoll)
 		if (spZoneInfo->m_rcfResolvConf.m_sResolvConfFile.size() == 0)
 			continue;
 
-		// –Ë“™π“º‡ ”
+		// ÈúÄË¶ÅÊåÇÁõëËßÜ
 
-		// «Û’Ê µŒƒº˛
+		// Ê±ÇÁúüÂÆûÊñá‰ª∂
 		sRealFile = spZoneInfo->m_rcfResolvConf.m_sResolvConfFile;
 		do 
 		{
@@ -54,7 +54,7 @@ bool FileINotify::Init(EPOLL_FD fdEPoll)
 
 		} while (bIsLink == true);
 
-		// »°Œƒº˛º–
+		// ÂèñÊñá‰ª∂Â§π
 		if ((rFindChar = sRealFile.rfind('/')) == std::string::npos)
 		{
 			SLOG_Error("path none / Ori File = %s, File = %s", spZoneInfo->m_rcfResolvConf.m_sResolvConfFile.c_str(), sRealFile.c_str());
@@ -62,7 +62,7 @@ bool FileINotify::Init(EPOLL_FD fdEPoll)
 		}
 		sRealPath = sRealFile.substr(0, rFindChar);
 
-		// »°Œƒº˛
+		// ÂèñÊñá‰ª∂
 		sRealFileName = sRealFile.substr(rFindChar + 1);
 		if (sRealFileName.size() == 0)
 		{

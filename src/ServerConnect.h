@@ -42,7 +42,7 @@ private:
 
 	bool DoNextEPollEvent();
 
-	void OnRecvData();		// иою╢╬мр╙╣Всцр╩╢н
+	void OnRecvData();		// Д╦┼Ф²╔Е╟╠Х╕│Х╟┐Г■╗Д╦─Ф╛║
 };
 
 #endif

@@ -105,7 +105,7 @@ public:
 	}
 
 
-	std::string m_sBuffer;		// ¼ÌĞøÍµÀÁÓÃstring´æÊı¾İ
+	std::string m_sBuffer;		// ç»§ç»­å·æ‡’ç”¨stringå­˜æ•°æ®
 	size_t		m_szOffset;
 };
 

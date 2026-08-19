@@ -109,11 +109,11 @@ bool Config::LoadConfigJson()
 		{
 			spZoneInfo->m_rcfResolvConf.m_sResolvConfFile = cjResolvFile->valuestring;
 
-			// ÓĞÎÄ¼ş£¬²»¶ÁDNS
+			// æœ‰æ–‡ä»¶ï¼Œä¸è¯»DNS
 		}
 		else
 		{
-			// Ã»ÎÄ¼ş£¬Ã»dnsÖ±½Ó¸øÊ§°Ü
+			// æ²¡æ–‡ä»¶ï¼Œæ²¡dnsç›´æ¥ç»™å¤±è´¥
 			if (cJSON_IsString(cjDNSIP) && inet_pton(AF_INET, cjDNSIP->valuestring, &spZoneInfo->m_iaDNSAddr) <= 0)
 				goto end;
 
@@ -181,7 +181,7 @@ void Config::RefreshResolvConf()
 		if (spZoneInfo->m_rcfResolvConf.m_sResolvConfFile.size() == 0)
 			continue;
 
-		// ĞèÒª¼ìÑé
+		// éœ€è¦æ£€éªŒ
 		spZoneInfo->m_bIsDNSAddrOK = false;
 
 		if (stat(spZoneInfo->m_rcfResolvConf.m_sResolvConfFile.c_str(), &statbuf) == -1)
@@ -196,7 +196,7 @@ void Config::RefreshResolvConf()
 			continue;
 		}
 		
-		// ĞèÒªË¢ĞÂ
+		// éœ€è¦åˆ·æ–°
 		memset(&spZoneInfo->m_iaDNSAddr, 0, sizeof(spZoneInfo->m_iaDNSAddr));
 		SLOG_Info("Loading file = %s", spZoneInfo->m_rcfResolvConf.m_sResolvConfFile.c_str());
 
@@ -244,7 +244,7 @@ bool Config::ReloadResolvConf(ZoneInfo &ziZoneInfo)
 			continue;
 
 		gotone = 1;
-		break; // Ö»È¡µÚÒ»¸ö
+		break; // åªå–ç¬¬ä¸€ä¸ª
 	}
 
 	if (gotone != 1)

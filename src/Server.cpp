@@ -151,7 +151,7 @@ int main(int argc, char *argv[])
 		goto end;
 	}
 
-	// 进入后台模式
+	// 杩涘叆鍚庡彴妯″紡
 #ifndef _WIN32
 	if (gConfig.m_bIsBackMode)
 	{
@@ -265,7 +265,7 @@ int main(int argc, char *argv[])
 
 					spDNSQureyWork->m_spServerConnect->OnRecvDataFirst();
 
-					// 垃圾清理
+					// 鍨冨溇娓呯悊
 					nCnnCntLoop++;
 					if (nCnnCntLoop % DEF_GARBAGE_CLEAN_HIT == 0)
 					{
@@ -357,7 +357,7 @@ int main(int argc, char *argv[])
 
 	ret = 0;
 end:
-	// 清空Session资源
+	// 娓呯┖Session璧勬簮
 	gServer.m_spWorkManager->ExitAndClear();
 
 	if (fdListenServer != (SOCKET_FD)-1)

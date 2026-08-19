@@ -184,7 +184,7 @@ bool Rfc1035::SkipBufferName(AutoBuffer &aBuffer)
 		{
 			if (aBuffer.ReadUINT8(&cNextLen) != true)
 				goto end;
-			ret = true; // ·ûºÏĞèÇó
+			ret = true; // ç¬¦åˆéœ€æ±‚
 			goto end;
 		}
 

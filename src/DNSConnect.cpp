@@ -16,7 +16,7 @@ bool DNSConnect::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_in &add
 	if (BaseConnect::Init(fdSock, fdEPoll, addrAddrIn) != true)
 		return false;
 
-	// ³õÊ¼»¯Ê±ºòÖ»ÓĞ¶Á
+	// åˆå§‹åŒ–æ—¶å€™åªæœ‰è¯»
 	m_sReadBuff.resize(DEF_CLIENT_PKG_LEN);
 	m_nReadOffset = 0;
 	addfd(m_fdEPoll, fdSock, EPOLLIN, true);
@@ -26,7 +26,7 @@ bool DNSConnect::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_in &add
 
 void DNSConnect::Exit()
 {
-	// ³ÌĞòÍË³ö
+	// ç¨‹åºé€€å‡º
 	BaseConnect::Exit();
 }
 
@@ -57,17 +57,17 @@ bool DNSConnect::Read()
 		m_nReadOffset += iLen;
 	}
 
-	// ´íÎó
+	// é”™è¯¯
 	if (m_nReadOffset > m_sReadBuff.size())
 		return false;
 
-	// ÕâÀï²»¼ÌĞø¶Á
+	// è¿™é‡Œä¸ç»§ç»­è¯»
 	m_sReadBuff.resize(m_nReadOffset);
 
-	// ½âÎö
+	// è§£æ
 	OnRecvData();
 
-	// ¼ÌĞø¶Á
+	// ç»§ç»­è¯»
 	m_sReadBuff.resize(DEF_CLIENT_PKG_LEN);
 	m_nReadOffset = 0;
 	DoNextEPollEvent();
@@ -81,13 +81,13 @@ bool DNSConnect::Write()
 
 	if (m_lsWriteQueue.size() == 0 && m_nWriteOffset == m_sWriteBuff.size())
 	{
-		// ÎŞÈÎÎñ
+		// æ— ä»»åŠ¡
 		return true;
 	}
 
 	if (m_nWriteOffset == m_sWriteBuff.size() && m_lsWriteQueue.size() != 0)
 	{
-		// Ã»×¼±¸ºÃ¾ÍÈ¡³öÒ»¸ö³öÀ´
+		// æ²¡å‡†å¤‡å¥½å°±å–å‡ºä¸€ä¸ªå‡ºæ¥
 		m_sWriteBuff = *m_lsWriteQueue.begin();
 		m_lsWriteQueue.pop_front();
 		m_nWriteOffset = 0;
@@ -101,11 +101,11 @@ bool DNSConnect::Write()
 		m_nWriteOffset += iLen;
 	}
 
-	// ´íÎó
+	// é”™è¯¯
 	if (m_nWriteOffset > m_sWriteBuff.size())
 		return false;
 
-	// ¼ÌĞø·¢ËÍ
+	// ç»§ç»­å‘é€
 	if (m_nWriteOffset < m_sWriteBuff.size())
 	{
 		if (DoNextEPollEvent() != true)
@@ -113,7 +113,7 @@ bool DNSConnect::Write()
 		return true;
 	}
 
-	if (DoNextEPollEvent() != true) // ÊÇ·ñ¼ÌĞø·¢
+	if (DoNextEPollEvent() != true) // æ˜¯å¦ç»§ç»­å‘
 		return false;
 
 	return true;

@@ -17,7 +17,7 @@ public:
 	void ExitAndClear();
 
 private:
-	static const unsigned int DEF_TIME_OUT = 10000; // 10�볬ʱ
+	static const unsigned int DEF_TIME_OUT = 10000; // 10秒超时
 };
 
 

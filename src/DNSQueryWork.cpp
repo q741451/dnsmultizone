@@ -48,7 +48,7 @@ bool DNSQureyWork::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_in &a
 		saServer.sin_port = htons((*iterZoneInfo)->m_nDNSPort);
 		if ((*iterZoneInfo)->m_bIsDNSAddrOK == false || (fd = ConnectToHost(saServer)) == (SOCKET_FD)-1)
 		{
-			// ¹ÒÁËÈÃËû¹Ò
+			// æŒ‚äº†è®©ä»–æŒ‚
 			spDNSConnect->Init(-1, fdEPoll, saServer);
 			SLOG_Info("ADD Error Child: %d", -1);
 		}
@@ -120,14 +120,14 @@ void DNSQureyWork::ServerNewWork(unsigned short nID, bool bIsARecord, std::strin
 
 	m_llLastTouch = Util::GetRuntimeInMs();
 
-	// ÎŞIDµÄ²»´¦Àí
+	// æ— IDçš„ä¸å¤„ç†
 	if (sDNSData.size() < 2)
 		return;
 
 	iterDNSQureyWorkItem = m_mwDNSQureyWorkItems.find(nID);
 	if (iterDNSQureyWorkItem != m_mwDNSQureyWorkItems.end())
 	{
-		// Î´EndµÄSessionÔÙ·¢Ò»±é
+		// æœªEndçš„Sessionå†å‘ä¸€é
 		spDNSQureyWorkItem = iterDNSQureyWorkItem->second;
 		for (iterDNSQueryResultItem = spDNSQureyWorkItem->m_vsDNSQueryResultItems.begin(), i = 0;
 			iterDNSQueryResultItem != spDNSQureyWorkItem->m_vsDNSQueryResultItems.end();
@@ -145,7 +145,7 @@ void DNSQureyWork::ServerNewWork(unsigned short nID, bool bIsARecord, std::strin
 	}
 	else
 	{
-		// ´´½¨Ò»Ì×£¬È«²¿·¢Ò»±é
+		// åˆ›å»ºä¸€å¥—ï¼Œå…¨éƒ¨å‘ä¸€é
 		spDNSQureyWorkItem = std::make_shared<DNSQureyWorkItem>();
 		spDNSQureyWorkItem->m_nID = nID;
 		spDNSQureyWorkItem->m_bIsA = bIsARecord;
@@ -164,7 +164,7 @@ void DNSQureyWork::ServerNewWork(unsigned short nID, bool bIsARecord, std::strin
 
 void DNSQureyWork::DNSQueryDisconnect(unsigned int nIndex)
 {
-	// ¸ÃIDµÄËùÓĞÕıÔÚµÈ´ıµÄÈÎÎñ¶¼¹ÒÁË
+	// è¯¥IDçš„æ‰€æœ‰æ­£åœ¨ç­‰å¾…çš„ä»»åŠ¡éƒ½æŒ‚äº†
 	std::map<unsigned short, std::shared_ptr<DNSQureyWorkItem>>::iterator iterDNSQureyWorkItem;
 
 	for (iterDNSQureyWorkItem = m_mwDNSQureyWorkItems.begin(); iterDNSQureyWorkItem != m_mwDNSQureyWorkItems.end(); ++iterDNSQureyWorkItem)
@@ -192,7 +192,7 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, bool 
 	{
 		if (nIndex == 0)
 		{
-			// ·ÇA¼ÇÂ¼£¬Ö»´¦ÀíÊ×Ñ¡DNS
+			// éAè®°å½•ï¼Œåªå¤„ç†é¦–é€‰DNS
 			iterDNSQureyWorkItem->second->m_bIsDone = true;
 			iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_sDNSData = sDNSData;
 			m_spServerConnect->m_bDisconnectTag = true;
@@ -229,14 +229,14 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, bool 
 	{
 		if (iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[i]->m_eState == DNSQueryResultItem::ENUM_STATE_WAIT)
 		{
-			// »¹Î´¾ÍĞ÷£¬ÏÈ²»¹Ü
+			// è¿˜æœªå°±ç»ªï¼Œå…ˆä¸ç®¡
 			iterDNSQureyWorkItem->second->m_nMaxDoneIndex = i;
 			break;
 		}
 
 		if (iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[i]->m_eState == DNSQueryResultItem::ENUM_STATE_MATCH)
 		{
-			// ¿ÉÒÔÁË£¬Í¨Öª¿Í»§£¬Çå¿ÕÕâ¸öÊÂÎñ
+			// å¯ä»¥äº†ï¼Œé€šçŸ¥å®¢æˆ·ï¼Œæ¸…ç©ºè¿™ä¸ªäº‹åŠ¡
 			iterDNSQureyWorkItem->second->m_bIsDone = true;
 			m_spServerConnect->m_bDisconnectTag = true;
 			m_spServerConnect->SendDNSResultBuffer(iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[i]->m_sDNSData);
@@ -246,7 +246,7 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, bool 
 
 	if (i == iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems.size())
 	{
-		// ¶¼²»·ûºÏ£¬¸øÓÅÏÈ¼¶×î¸ßµÄºÏ·¨µÄ
+		// éƒ½ä¸ç¬¦åˆï¼Œç»™ä¼˜å…ˆçº§æœ€é«˜çš„åˆæ³•çš„
 		for (i = 0; i < iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems.size(); i++)
 		{
 			if (iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[i]->m_eState == DNSQueryResultItem::ENUM_STATE_NOT_MATCH)
