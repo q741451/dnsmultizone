@@ -26,10 +26,14 @@ public:
 
 	bool ReadUINT32(unsigned int *pNumber)
 	{
+		unsigned int nNumber = 0;
+
 		if (m_sBuffer.size() - m_szOffset < sizeof(unsigned int))
 			return false;
 
-		*pNumber = ntohl(*(unsigned int*)GetCurPtr());
+		// 偏移是任意的，不能直接强转指针读，MIPS/ARM 上会触发未对齐访问
+		memcpy(&nNumber, GetCurPtr(), sizeof(nNumber));
+		*pNumber = ntohl(nNumber);
 
 		m_szOffset += sizeof(unsigned int);
 
@@ -38,10 +42,13 @@ public:
 
 	bool ReadUINT16(unsigned short *pNumber)
 	{
+		unsigned short nNumber = 0;
+
 		if (m_sBuffer.size() - m_szOffset < sizeof(unsigned short))
 			return false;
 
-		*pNumber = ntohs(*(unsigned short*)GetCurPtr());
+		memcpy(&nNumber, GetCurPtr(), sizeof(nNumber));
+		*pNumber = ntohs(nNumber);
 
 		m_szOffset += sizeof(unsigned short);
 
