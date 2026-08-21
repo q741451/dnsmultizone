@@ -6,6 +6,7 @@
       "name": "domain",
       "enable": true,
       "priority": 10,
+      "denyNXDomain": false,
       "dnsIP": "223.5.5.5",
       "dnsPort": 53,
       "ipList": [

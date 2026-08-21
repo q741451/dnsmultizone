@@ -246,13 +246,14 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsig
 		if (nJudgedCount == 0)
 		{
 			// 没有可判定的地址，要区分两种情况：
-			// NXDOMAIN 是上游断言"这个名字不存在"。按列表屏蔽域名的上游只会用
-			// NXDOMAIN 或伪造地址这两种手段，伪造地址已由 ipList 判定拦下，
-			// 这里拦的是前者，实测有上游对被屏蔽域名的 A 和 AAAA 都返回 NXDOMAIN，
-			// 不让位的话这些域名就彻底解析不了。
-			// 其余情况（真 NODATA、SERVFAIL 等）都判不出归属：前者是这个名字确实
-			// 没有该类型记录，后者是上游自身故障，故障证明不了归属，都按优先级取用。
-			if (Rfc1035::GetRCode(uFlag) == Rfc1035::DEF_RCODE_NXDOMAIN)
+			// NXDOMAIN 在绝大多数环境里是合法的"这个名字不存在"，搜索域展开和
+			// 拼错的域名每天都在产生，一律让位只会让它们白等所有 zone 回齐。
+			// 只有确实用 NXDOMAIN 做列表屏蔽的上游才需要 denyNXDomain，此时它
+			// 断言的"不存在"不可信，必须让位，否则被屏蔽的域名彻底解析不了。
+			// 其余情况都判不出归属：真 NODATA 是这个名字确实没有该类型记录，
+			// SERVFAIL 之类是上游自身故障，故障证明不了归属，都按优先级取用。
+			if (gConfig.IsDenyNXDomain(nIndex) &&
+				Rfc1035::GetRCode(uFlag) == Rfc1035::DEF_RCODE_NXDOMAIN)
 				iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_NOT_MATCH;
 			else
 				iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_MATCH;

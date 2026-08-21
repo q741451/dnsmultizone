@@ -109,11 +109,15 @@ public:
 		memset(&m_ssDNSAddr, 0, sizeof(m_ssDNSAddr));
 		m_bIsDNSAddrOK = false;
 		m_nDNSPort = 0;
+		m_bIsDenyNXDomain = false;
 	}
 	std::string m_sName;
 	unsigned int m_nPriority;
 	ResolvConf m_rcfResolvConf;
 	bool m_bIsDNSAddrOK;
+	// 这个上游是否用 NXDOMAIN 屏蔽域名。默认 false，即把 NXDOMAIN 当作
+	// 正常的"名字不存在"，按优先级取用；置 true 才视为否定并让位
+	bool m_bIsDenyNXDomain;
 	struct sockaddr_storage m_ssDNSAddr;	// 上游地址，v4/v6 都放这里
 	unsigned short m_nDNSPort;
 	bool SetDNSAddrFromString(const char *cAddr);

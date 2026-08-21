@@ -12,6 +12,7 @@ public:
 	bool LoadConfigJson();
 	EnumIPMatch CheckIsMatch(unsigned int nIndex, unsigned int nIP);
 	EnumIPMatch CheckIsMatch(unsigned int nIndex, const unsigned char *cIP);
+	bool IsDenyNXDomain(unsigned int nIndex);
 
 	void RefreshResolvConf();
 

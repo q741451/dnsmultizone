@@ -108,6 +108,7 @@ bool Config::LoadConfigJson()
 		cJSON* cjResolvFile = cJSON_GetObjectItemCaseSensitive(cjZone, "resolvFile");
 		cJSON *cjDNSIP = cJSON_GetObjectItemCaseSensitive(cjZone, "dnsIP");
 		cJSON *cjDNSPort = cJSON_GetObjectItemCaseSensitive(cjZone, "dnsPort");
+		cJSON *cjDenyNX = cJSON_GetObjectItemCaseSensitive(cjZone, "denyNXDomain");
 		cJSON *cjIPs = cJSON_GetObjectItemCaseSensitive(cjZone, "ipList");
 		cJSON *cjIP = NULL;
 
@@ -144,6 +145,10 @@ bool Config::LoadConfigJson()
 
 		spZoneInfo->m_nDNSPort = cjDNSPort->valueint;
 		spZoneInfo->SetDNSPort(spZoneInfo->m_nDNSPort);
+
+		// 可选项，缺省为 false
+		if (cJSON_IsBool(cjDenyNX))
+			spZoneInfo->m_bIsDenyNXDomain = cJSON_IsTrue(cjDenyNX) ? true : false;
 		
 		cJSON_ArrayForEach(cjIP, cjIPs)
 		{
@@ -195,6 +200,11 @@ EnumIPMatch Config::CheckIsMatch(unsigned int nIndex, unsigned int nIP)
 EnumIPMatch Config::CheckIsMatch(unsigned int nIndex, const unsigned char *cIP)
 {
 	return m_vsZoneInfos[nIndex]->CheckIsMatch(cIP);
+}
+
+bool Config::IsDenyNXDomain(unsigned int nIndex)
+{
+	return m_vsZoneInfos[nIndex]->m_bIsDenyNXDomain;
 }
 
 void Config::RefreshResolvConf()
