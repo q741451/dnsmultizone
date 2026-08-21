@@ -25,7 +25,7 @@ public:
 
 	// DNS
 	virtual void DNSQueryDisconnect(unsigned int nIndex);
-	virtual void DNSQueryResult(unsigned int nIndex, unsigned short nID, unsigned short uQType, bool bIsParseOK,
+	virtual void DNSQueryResult(unsigned int nIndex, unsigned short nID, unsigned short uQType, unsigned short uFlag, bool bIsParseOK,
 		std::list<unsigned int> &luIPs, std::list<IPv6Addr> &luIP6s, std::string &sDNSData);
 
 	unsigned long long							m_llLastTouch;

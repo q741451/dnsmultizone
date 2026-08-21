@@ -169,7 +169,7 @@ void DNSQureyWork::DNSQueryDisconnect(unsigned int nIndex)
 	}
 }
 
-void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsigned short uQType, bool bIsParseOK,
+void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsigned short uQType, unsigned short uFlag, bool bIsParseOK,
 	std::list<unsigned int> &luIPs, std::list<IPv6Addr> &luIP6s, std::string &sDNSData)
 {
 	std::map<unsigned short, std::shared_ptr<DNSQureyWorkItem>>::iterator iterDNSQureyWorkItem;
@@ -245,9 +245,17 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsig
 
 		if (nJudgedCount == 0)
 		{
-			// 没有可判定的地址：要么应答里本来就没给，要么本 zone 对这些族没有立场。
-			// 两种都判不出归属，按优先级取用
-			iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_MATCH;
+			// 没有可判定的地址，要区分两种情况：
+			// NXDOMAIN 是上游断言"这个名字不存在"。按列表屏蔽域名的上游只会用
+			// NXDOMAIN 或伪造地址这两种手段，伪造地址已由 ipList 判定拦下，
+			// 这里拦的是前者，实测有上游对被屏蔽域名的 A 和 AAAA 都返回 NXDOMAIN，
+			// 不让位的话这些域名就彻底解析不了。
+			// 其余情况（真 NODATA、SERVFAIL 等）都判不出归属：前者是这个名字确实
+			// 没有该类型记录，后者是上游自身故障，故障证明不了归属，都按优先级取用。
+			if (Rfc1035::GetRCode(uFlag) == Rfc1035::DEF_RCODE_NXDOMAIN)
+				iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_NOT_MATCH;
+			else
+				iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_MATCH;
 		}
 		else if (nMatchCount != 0 && nJudgedCount / nMatchCount <= 2)
 			iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_MATCH;

@@ -13,6 +13,12 @@ public:
 	static const unsigned short DEF_SVCPARAM_IPV4HINT = 0x0004;
 	static const unsigned short DEF_SVCPARAM_IPV6HINT = 0x0006;
 
+	static const unsigned short DEF_RCODE_NOERROR  = 0x0000;
+	static const unsigned short DEF_RCODE_NXDOMAIN = 0x0003;
+
+	// 应答头 Flags 的低 4 位是 RCODE
+	static unsigned short GetRCode(unsigned short uFlag) { return uFlag & 0x000F; }
+
 	// 应答里带有可建连 IP 的类型，只有这些能拿去和 zone 的 ipList 比对，
 	// 其余类型不携带任何归属信息
 	static bool IsIPBearingType(unsigned short uQType);

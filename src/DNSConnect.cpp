@@ -177,6 +177,6 @@ void DNSConnect::OnRecvData()
 	bIsParseOK = true;
 end:
 	if (m_ifInterface)
-		m_ifInterface->DNSQueryResult(m_nIndex, uID, uQType, bIsParseOK, luIPs, luIP6s, sDNSData);
+		m_ifInterface->DNSQueryResult(m_nIndex, uID, uQType, uFlag, bIsParseOK, luIPs, luIP6s, sDNSData);
 }
 
