@@ -114,13 +114,14 @@ bool Config::LoadConfigJson()
 		else
 		{
 			// 没文件，没dns直接给失败
-			if (cJSON_IsString(cjDNSIP) && inet_pton(AF_INET, cjDNSIP->valuestring, &spZoneInfo->m_iaDNSAddr) <= 0)
+			if (cJSON_IsString(cjDNSIP) && spZoneInfo->SetDNSAddrFromString(cjDNSIP->valuestring) != true)
 				goto end;
 
 			spZoneInfo->m_bIsDNSAddrOK = true;
 		}
 
 		spZoneInfo->m_nDNSPort = cjDNSPort->valueint;
+		spZoneInfo->SetDNSPort(spZoneInfo->m_nDNSPort);
 		
 		cJSON_ArrayForEach(cjIP, cjIPs)
 		{
@@ -164,9 +165,14 @@ end:
 	return ret;
 }
 
-bool Config::CheckIsMatch(unsigned int nIndex, unsigned int nIP)
+EnumIPMatch Config::CheckIsMatch(unsigned int nIndex, unsigned int nIP)
 {
 	return m_vsZoneInfos[nIndex]->CheckIsMatch(nIP);
+}
+
+EnumIPMatch Config::CheckIsMatch(unsigned int nIndex, const unsigned char *cIP)
+{
+	return m_vsZoneInfos[nIndex]->CheckIsMatch(cIP);
 }
 
 void Config::RefreshResolvConf()
@@ -197,7 +203,7 @@ void Config::RefreshResolvConf()
 		}
 		
 		// 需要刷新
-		memset(&spZoneInfo->m_iaDNSAddr, 0, sizeof(spZoneInfo->m_iaDNSAddr));
+		memset(&spZoneInfo->m_ssDNSAddr, 0, sizeof(spZoneInfo->m_ssDNSAddr));
 		SLOG_Info("Loading file = %s", spZoneInfo->m_rcfResolvConf.m_sResolvConfFile.c_str());
 
 		spZoneInfo->m_rcfResolvConf.m_tResolvConfFileTime = statbuf.st_mtime;
@@ -240,7 +246,8 @@ bool Config::ReloadResolvConf(ZoneInfo &ziZoneInfo)
 		if (!(token = strtok(NULL, " \t\n\r")))
 			continue;
 
-		if (inet_pton(AF_INET, token, &ziZoneInfo.m_iaDNSAddr) <= 0)
+		// v4 v6 都接受，仍然只取第一条能解析的
+		if (ziZoneInfo.SetDNSAddrFromString(token) != true)
 			continue;
 
 		gotone = 1;
@@ -249,6 +256,8 @@ bool Config::ReloadResolvConf(ZoneInfo &ziZoneInfo)
 
 	if (gotone != 1)
 		goto end;
+
+	ziZoneInfo.SetDNSPort(ziZoneInfo.m_nDNSPort);
 
 	ret = true;
 end:

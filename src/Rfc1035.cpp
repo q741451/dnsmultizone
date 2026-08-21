@@ -2,7 +2,8 @@
 
 bool Rfc1035::IsIPBearingType(unsigned short uQType)
 {
-	return (uQType == DEF_TYPE_A || uQType == DEF_TYPE_SVCB || uQType == DEF_TYPE_HTTPS);
+	return (uQType == DEF_TYPE_A || uQType == DEF_TYPE_AAAA ||
+		uQType == DEF_TYPE_SVCB || uQType == DEF_TYPE_HTTPS);
 }
 
 bool Rfc1035::ParseRequestA(std::string &sBuffer, unsigned short *uID, unsigned short *uFlag, std::string &sName, unsigned short *uQType)
@@ -21,7 +22,8 @@ end:
 	return ret;
 }
 
-bool Rfc1035::ParseResponseA(std::string &sBuffer, unsigned short *uID, unsigned short *uFlag, std::string &sName, unsigned short *uQType, std::list<unsigned int> &luIPs)
+bool Rfc1035::ParseResponseA(std::string &sBuffer, unsigned short *uID, unsigned short *uFlag, std::string &sName, unsigned short *uQType,
+	std::list<unsigned int> &luIPs, std::list<IPv6Addr> &luIP6s)
 {
 	bool ret = false;
 	int i = 0;
@@ -69,14 +71,26 @@ bool Rfc1035::ParseResponseA(std::string &sBuffer, unsigned short *uID, unsigned
 			case DEF_TYPE_CNAME: // CNAME
 				break;
 			case DEF_TYPE_A: // A
-				if(sData.size() == sizeof(unsigned int))
-					luIPs.push_back(ntohl(*(unsigned int*)sData.c_str()));
+				if (sData.size() == sizeof(unsigned int))
+				{
+					unsigned int uIP = 0;
+					memcpy(&uIP, sData.c_str(), sizeof(uIP));
+					luIPs.push_back(ntohl(uIP));
+				}
+				break;
+			case DEF_TYPE_AAAA: // AAAA
+				if (sData.size() == sizeof(IPv6Addr))
+				{
+					IPv6Addr iaAddr;
+					memcpy(iaAddr.m_cAddr, sData.c_str(), sizeof(iaAddr.m_cAddr));
+					luIP6s.push_back(iaAddr);
+				}
 				break;
 			case DEF_TYPE_SVCB: // SVCB
 			case DEF_TYPE_HTTPS: // HTTPS
-				// ipv4hint 是客户端可能直接拿去建连的地址，
-				// 因此和 A 记录一样要过 ipList 校验
-				if (ParseSvcParamIPv4Hint(sData, luIPs) != true)
+				// hint 是客户端可能直接拿去建连的地址，
+				// 因此和 A/AAAA 记录一样要过 ipList 校验
+				if (ParseSvcParamHint(sData, luIPs, luIP6s) != true)
 					goto end;
 				break;
 			default:
@@ -90,7 +104,7 @@ end:
 	return ret;
 }
 
-bool Rfc1035::ParseSvcParamIPv4Hint(std::string &sData, std::list<unsigned int> &luIPs)
+bool Rfc1035::ParseSvcParamHint(std::string &sData, std::list<unsigned int> &luIPs, std::list<IPv6Addr> &luIP6s)
 {
 	bool ret = false;
 	unsigned short uPriority = 0;
@@ -120,9 +134,7 @@ bool Rfc1035::ParseSvcParamIPv4Hint(std::string &sData, std::list<unsigned int> 
 		if (uLen && aBuffer.ReadBuffer((char*)sValue.c_str(), uLen) != true)
 			goto end;
 
-		if (uKey != DEF_SVCPARAM_IPV4HINT)
-			continue;
-
+		if (uKey == DEF_SVCPARAM_IPV4HINT)
 		{
 			// Assign 不会重置偏移，每个参数都要用新的读取器
 			AutoBuffer aHint;
@@ -131,6 +143,17 @@ bool Rfc1035::ParseSvcParamIPv4Hint(std::string &sData, std::list<unsigned int> 
 			aHint.Assign((char*)sValue.c_str(), sValue.size());
 			while (aHint.ReadUINT32(&uIP) == true)
 				luIPs.push_back(uIP);
+		}
+		else if (uKey == DEF_SVCPARAM_IPV6HINT)
+		{
+			size_t szPos = 0;
+
+			for (szPos = 0; szPos + sizeof(IPv6Addr) <= sValue.size(); szPos += sizeof(IPv6Addr))
+			{
+				IPv6Addr iaAddr;
+				memcpy(iaAddr.m_cAddr, sValue.c_str() + szPos, sizeof(iaAddr.m_cAddr));
+				luIP6s.push_back(iaAddr);
+			}
 		}
 	}
 

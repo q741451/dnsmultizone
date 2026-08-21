@@ -17,7 +17,6 @@ bool DNSQureyWork::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_in &a
 	bool ret = false;
 	SOCKET_FD fd = (SOCKET_FD)-1;
 	int i = 0;
-	struct sockaddr_in saServer;
 	std::vector<std::shared_ptr<ZoneInfo>>::iterator iterZoneInfo;
 	std::shared_ptr<DNSConnect> spDNSConnect;
 	std::shared_ptr<BaseConnect> spBaseConnect;
@@ -42,19 +41,15 @@ bool DNSQureyWork::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_in &a
 	for (iterZoneInfo = gConfig.m_vsZoneInfos.begin(), i = 0; iterZoneInfo != gConfig.m_vsZoneInfos.end(); ++iterZoneInfo, i++)
 	{
 		spDNSConnect = std::make_shared<DNSConnect>();
-		memset(&saServer, 0, sizeof(saServer));
-		saServer.sin_family = PF_INET;
-		saServer.sin_addr = (*iterZoneInfo)->m_iaDNSAddr;
-		saServer.sin_port = htons((*iterZoneInfo)->m_nDNSPort);
-		if ((*iterZoneInfo)->m_bIsDNSAddrOK == false || (fd = ConnectToHost(saServer)) == (SOCKET_FD)-1)
+		if ((*iterZoneInfo)->m_bIsDNSAddrOK == false || (fd = ConnectToHost(*(*iterZoneInfo))) == (SOCKET_FD)-1)
 		{
 			// 挂了让他挂
-			spDNSConnect->Init(-1, fdEPoll, saServer);
+			spDNSConnect->Init(-1, fdEPoll);
 			SLOG_Info("ADD Error Child: %d", -1);
 		}
 		else
 		{
-			if (spDNSConnect->Init(fd, fdEPoll, saServer) != true)
+			if (spDNSConnect->Init(fd, fdEPoll) != true)
 				goto end;
 			spBaseConnect = std::dynamic_pointer_cast<BaseConnect>(spDNSConnect);
 			if (gServer.m_spConnectionManager->SaveItem(fd, spBaseConnect) != true)
@@ -174,13 +169,19 @@ void DNSQureyWork::DNSQueryDisconnect(unsigned int nIndex)
 	}
 }
 
-void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsigned short uQType, bool bIsParseOK, std::list<unsigned int> &luIPs, std::string &sDNSData)
+void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsigned short uQType, bool bIsParseOK,
+	std::list<unsigned int> &luIPs, std::list<IPv6Addr> &luIP6s, std::string &sDNSData)
 {
 	std::map<unsigned short, std::shared_ptr<DNSQureyWorkItem>>::iterator iterDNSQureyWorkItem;
 	std::list<unsigned int>::iterator iterIP;
+	std::list<IPv6Addr>::iterator iterIP6;
 	unsigned int i = 0;
 	unsigned int nMatchCount = 0;
-	
+	unsigned int nJudgedCount = 0;
+	unsigned short uReqType = 0;
+	bool bUseV4 = false;
+	bool bUseV6 = false;
+
 	iterDNSQureyWorkItem = m_mwDNSQureyWorkItems.find(nID);
 	if (iterDNSQureyWorkItem == m_mwDNSQureyWorkItems.end())
 		return;
@@ -188,9 +189,17 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsig
 	if (iterDNSQureyWorkItem->second->m_bIsDone)
 		return;
 
-	if(sDNSData.size() == 0)
+	uReqType = iterDNSQureyWorkItem->second->m_uQType;
+
+	// A 和 AAAA 是各走各的池，互不影响；SVCB/HTTPS 的 hint 两族一起看
+	bUseV4 = (uReqType == Rfc1035::DEF_TYPE_A ||
+		uReqType == Rfc1035::DEF_TYPE_SVCB || uReqType == Rfc1035::DEF_TYPE_HTTPS);
+	bUseV6 = (uReqType == Rfc1035::DEF_TYPE_AAAA ||
+		uReqType == Rfc1035::DEF_TYPE_SVCB || uReqType == Rfc1035::DEF_TYPE_HTTPS);
+
+	if (sDNSData.size() == 0)
 		iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_ERROR;
-	else if (Rfc1035::IsIPBearingType(iterDNSQureyWorkItem->second->m_uQType) == false)
+	else if (Rfc1035::IsIPBearingType(uReqType) == false)
 	{
 		// 该类型不携带任何 IP，判不出归属，也就没法说它不属于本域，
 		// 按优先级取用即可
@@ -205,29 +214,48 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsig
 	{
 		iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_NOT_MATCH;
 	}
-	else if (luIPs.size() > 0)
+	else
 	{
-		for (iterIP = luIPs.begin(); iterIP != luIPs.end(); ++iterIP)
+		// 本 zone 对某个族完全没有条目时不计入分子分母，它对该族没有立场
+		if (bUseV4)
 		{
-			if (gConfig.CheckIsMatch(nIndex, (*iterIP)) == true)
-				nMatchCount++;
+			for (iterIP = luIPs.begin(); iterIP != luIPs.end(); ++iterIP)
+			{
+				EnumIPMatch eMatch = gConfig.CheckIsMatch(nIndex, (*iterIP));
+				if (eMatch == ENUM_IP_NO_OPINION)
+					continue;
+				nJudgedCount++;
+				if (eMatch == ENUM_IP_MATCH)
+					nMatchCount++;
+			}
 		}
-		if (nMatchCount != 0 && luIPs.size() / nMatchCount <= 2)
+
+		if (bUseV6)
+		{
+			for (iterIP6 = luIP6s.begin(); iterIP6 != luIP6s.end(); ++iterIP6)
+			{
+				EnumIPMatch eMatch = gConfig.CheckIsMatch(nIndex, (*iterIP6).m_cAddr);
+				if (eMatch == ENUM_IP_NO_OPINION)
+					continue;
+				nJudgedCount++;
+				if (eMatch == ENUM_IP_MATCH)
+					nMatchCount++;
+			}
+		}
+
+		if (nJudgedCount == 0)
+		{
+			// 没有可判定的地址：要么应答里本来就没给，要么本 zone 对这些族没有立场。
+			// 两种都判不出归属，按优先级取用
+			iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_MATCH;
+		}
+		else if (nMatchCount != 0 && nJudgedCount / nMatchCount <= 2)
 			iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_MATCH;
 		else
 			iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_NOT_MATCH;
+
 		iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_luIPs = luIPs;
-	}
-	else if (iterDNSQureyWorkItem->second->m_uQType == Rfc1035::DEF_TYPE_A)
-	{
-		// A 记录本就该给出地址，没给说明本域服务不了这个名字，让给下一个
-		iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_NOT_MATCH;
-	}
-	else
-	{
-		// SVCB/HTTPS 的 ipv4hint 是可选参数，没有不算失败，
-		// 同样判不出归属，按优先级取用
-		iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_MATCH;
+		iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_luIP6s = luIP6s;
 	}
 
 	iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_sDNSData = sDNSData;
@@ -267,17 +295,18 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsig
 	}
 }
 
-SOCKET_FD DNSQureyWork::ConnectToHost(struct sockaddr_in &saServer)
+SOCKET_FD DNSQureyWork::ConnectToHost(ZoneInfo &ziZoneInfo)
 {
 	bool ret = false;
 	SOCKET_FD fd = (SOCKET_FD) -1;
 
-	fd = socket(PF_INET, SOCK_DGRAM, 0);
+	// 上游是什么族就建什么族的 socket
+	fd = socket(ziZoneInfo.m_ssDNSAddr.ss_family, SOCK_DGRAM, 0);
 
 	if (fd == (SOCKET_FD)-1)
 		goto end;
 
-	if (connect(fd, (struct sockaddr*)&saServer, sizeof(saServer)) != 0)
+	if (connect(fd, (struct sockaddr*)&ziZoneInfo.m_ssDNSAddr, ziZoneInfo.GetDNSAddrLen()) != 0)
 		goto end;
 
 	ret = true;

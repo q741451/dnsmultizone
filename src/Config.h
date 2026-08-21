@@ -10,7 +10,8 @@ public:
 	bool Init(int argc, char *argv[]);
 	void Reset();
 	bool LoadConfigJson();
-	bool CheckIsMatch(unsigned int nIndex, unsigned int nIP);
+	EnumIPMatch CheckIsMatch(unsigned int nIndex, unsigned int nIP);
+	EnumIPMatch CheckIsMatch(unsigned int nIndex, const unsigned char *cIP);
 
 	void RefreshResolvConf();
 

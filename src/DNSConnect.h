@@ -6,7 +6,8 @@ class InterfaceDNSConnect
 {
 public:
 	virtual void DNSQueryDisconnect(unsigned int nIndex) = 0;
-	virtual void DNSQueryResult(unsigned int nIndex, unsigned short nID, unsigned short uQType, bool bIsParseOK, std::list<unsigned int> &luIPs, std::string &sDNSData) = 0;
+	virtual void DNSQueryResult(unsigned int nIndex, unsigned short nID, unsigned short uQType, bool bIsParseOK,
+		std::list<unsigned int> &luIPs, std::list<IPv6Addr> &luIP6s, std::string &sDNSData) = 0;
 };
 
 class DNSConnect : public BaseConnect
@@ -17,7 +18,7 @@ public:
 
 public:
 	void SetInterface(InterfaceDNSConnect *ifInterface);
-	virtual bool Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_in &addrAddrIn);
+	virtual bool Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll);
 	virtual void Exit();
 	virtual void Clear();
 

@@ -17,6 +17,7 @@ public:
 	}
 	EnumState m_eState;
 	std::list<unsigned int> m_luIPs;
+	std::list<IPv6Addr>     m_luIP6s;
 	std::string m_sDNSData;
 };
 

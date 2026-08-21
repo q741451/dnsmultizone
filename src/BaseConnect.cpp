@@ -5,7 +5,7 @@ BaseConnect::BaseConnect()
 	Clear();
 }
 
-bool BaseConnect::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_in &addrAddrIn)
+bool BaseConnect::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll)
 {
 	bool ret = false;
 	int iError = 0;
@@ -13,7 +13,6 @@ bool BaseConnect::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_in &ad
 	socklen_t slLen = sizeof(iError);
 
 	m_fdSock = fdSock;
-	m_addrClient = addrAddrIn;
 	m_fdEPoll = fdEPoll;
 
 	if (getsockopt(m_fdSock, SOL_SOCKET, SO_ERROR, (char*)&iError, &slLen) != 0)

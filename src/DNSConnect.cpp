@@ -11,9 +11,9 @@ void DNSConnect::SetInterface(InterfaceDNSConnect *ifInterface)
 	m_ifInterface = ifInterface;
 }
 
-bool DNSConnect::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_in &addrAddrIn)
+bool DNSConnect::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll)
 {
-	if (BaseConnect::Init(fdSock, fdEPoll, addrAddrIn) != true)
+	if (BaseConnect::Init(fdSock, fdEPoll) != true)
 		return false;
 
 	// 初始化时候只有读
@@ -166,16 +166,17 @@ void DNSConnect::OnRecvData()
 	unsigned short uID = 0;
 	unsigned short uQType = 0;
 	std::list<unsigned int> luIPs;
+	std::list<IPv6Addr> luIP6s;
 	bool bIsParseOK = false;
 
 	sDNSData = m_sReadBuff;
 
-	if (Rfc1035::ParseResponseA(sDNSData, &uID, &uFlag, sName, &uQType, luIPs) != true)
+	if (Rfc1035::ParseResponseA(sDNSData, &uID, &uFlag, sName, &uQType, luIPs, luIP6s) != true)
 		goto end;
 
 	bIsParseOK = true;
 end:
 	if (m_ifInterface)
-		m_ifInterface->DNSQueryResult(m_nIndex, uID, uQType, bIsParseOK, luIPs, sDNSData);
+		m_ifInterface->DNSQueryResult(m_nIndex, uID, uQType, bIsParseOK, luIPs, luIP6s, sDNSData);
 }
 

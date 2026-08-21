@@ -9,7 +9,8 @@ public:
 	virtual ~BaseConnect() {}
 
 public:
-	virtual bool Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_in &addrAddrIn);
+	// 地址只在 ServerConnect 侧有意义，这里不需要
+	virtual bool Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll);
 	virtual void Exit();
 	virtual void Clear();
 

@@ -25,7 +25,8 @@ public:
 
 	// DNS
 	virtual void DNSQueryDisconnect(unsigned int nIndex);
-	virtual void DNSQueryResult(unsigned int nIndex, unsigned short nID, unsigned short uQType, bool bIsParseOK, std::list<unsigned int> &luIPs, std::string &sDNSData);
+	virtual void DNSQueryResult(unsigned int nIndex, unsigned short nID, unsigned short uQType, bool bIsParseOK,
+		std::list<unsigned int> &luIPs, std::list<IPv6Addr> &luIP6s, std::string &sDNSData);
 
 	unsigned long long							m_llLastTouch;
 	std::shared_ptr<ServerConnect>				m_spServerConnect;
@@ -35,7 +36,7 @@ private:
 
 	std::map<unsigned short, std::shared_ptr<DNSQureyWorkItem>>	m_mwDNSQureyWorkItems;
 
-	SOCKET_FD ConnectToHost(struct sockaddr_in &saServer);
+	SOCKET_FD ConnectToHost(ZoneInfo &ziZoneInfo);
 };
 
 
