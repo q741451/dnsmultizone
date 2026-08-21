@@ -24,61 +24,85 @@ static void SigEventInt(int sig)
 		modfd(gFdEPollExit, gFdExitEvent, EPOLLOUT);
 }
 
-static bool CreateSockServer(int iType, unsigned long ulAddress, unsigned short usPort, SOCKET_FD *pFd)
+// 以下三个 helper 抄自 quictun 的 quictun_socket_util.cc：
+// 共享监听 socket 与每连接 socket 用同一套选项，IPv6 一律关掉 V6ONLY 走双栈
+
+static bool SetReuseAddrAndPort(SOCKET_FD fd)
 {
-	struct sockaddr_in sBindAddress;
 	int iReuse = 1;
+
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char*)&iReuse, sizeof(iReuse)) != 0)
+		return false;
+
+#ifdef SO_REUSEPORT
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, (char*)&iReuse, sizeof(iReuse)) != 0)
+		return false;
+#endif
+
+	return true;
+}
+
+// 绑到 IPv6 地址的 socket 同时接收 IPv4（v4-mapped）流量。
+// 必须显式设置：net.ipv6.bindv6only 可能被系统改成 1，不能依赖内核默认值。
+static bool SetIpv6OnlyDisabled(SOCKET_FD fd)
+{
+	int iV6Only = 0;
+
+	return (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&iV6Only, sizeof(iV6Only)) == 0);
+}
+
+static SOCKET_FD CreateReusableUdpSocket(int iFamily)
+{
+	SOCKET_FD fd = socket(iFamily, SOCK_DGRAM, 0);
+
+	if (fd == (SOCKET_FD)-1)
+		return (SOCKET_FD)-1;
+
+	if (SetReuseAddrAndPort(fd) != true)
+		goto fail;
+
+	if (iFamily == AF_INET6 && SetIpv6OnlyDisabled(fd) != true)
+		goto fail;
+
+	return fd;
+fail:
+	SOCKET_CLOSE(fd);
+	return (SOCKET_FD)-1;
+}
+
+static bool CreateSockServer(const struct sockaddr_storage &ssBind, socklen_t slBindLen, SOCKET_FD *pFd)
+{
 	bool ret = false;
 
-	*pFd = socket(PF_INET, iType, 0);
+	*pFd = CreateReusableUdpSocket(ssBind.ss_family);
 
 	if (*pFd == (SOCKET_FD)-1)
 		goto end;
 
-	if (setsockopt(*pFd, SOL_SOCKET, SO_REUSEADDR, (char*)&iReuse, sizeof(iReuse)) != 0)
+	if (bind(*pFd, (struct sockaddr*)&ssBind, slBindLen) < 0)
 		goto end;
-
-	memset(&sBindAddress, 0, sizeof(struct sockaddr_in));
-	sBindAddress.sin_family = PF_INET;
-	sBindAddress.sin_addr.s_addr = htonl(ulAddress);
-	sBindAddress.sin_port = htons(usPort);
-
-	if (bind(*pFd, (struct sockaddr*)&sBindAddress, sizeof(sBindAddress)) < 0)
-		goto end;
-
-	if (iType == SOCK_STREAM)
-	{
-		if (listen(*pFd, 5) < 0)
-			goto end;
-	}
 
 	ret = true;
 end:
 	return ret;
 }
 
-static SOCKET_FD UdpAccept(struct sockaddr_in &addrRemote,
-	struct in_addr &addrBind, unsigned short uBindPort)
+// 把新来的对端从共享监听 socket 迁到它自己的 socket 上：
+// 建同样选项的 socket、bind 同一个监听地址、connect 到对端，
+// 之后内核按四元组把该对端的包送到这个更具体的 socket
+static SOCKET_FD UdpAccept(const struct sockaddr_storage &ssRemote, socklen_t slRemoteLen,
+	const struct sockaddr_storage &ssBind, socklen_t slBindLen)
 {
 	bool ret = false;
-	int iReuse = 1;
-	struct sockaddr_in addrLocal;
-	SOCKET_FD fd = socket(PF_INET, SOCK_DGRAM, 0);
+	SOCKET_FD fd = CreateReusableUdpSocket(ssBind.ss_family);
 
 	if (fd == (SOCKET_FD)-1)
 		goto end;
 
-	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char*)&iReuse, sizeof(iReuse)) != 0)
+	if (bind(fd, (struct sockaddr*)&ssBind, slBindLen) == -1)
 		goto end;
 
-	memset(&addrLocal, 0, sizeof(addrLocal));
-	addrLocal.sin_family = PF_INET;
-	addrLocal.sin_port = htons(uBindPort);
-	addrLocal.sin_addr = addrBind;
-	if (bind(fd, (struct sockaddr *) &addrLocal, sizeof(addrLocal)) == -1)
-		goto end;
-
-	if (connect(fd, (struct sockaddr*)&addrRemote, sizeof(addrRemote)) != 0)
+	if (connect(fd, (struct sockaddr*)&ssRemote, slRemoteLen) != 0)
 		goto end;
 
 	ret = true;
@@ -139,7 +163,7 @@ int main(int argc, char *argv[])
 		goto end;
 	}
 
-	if (CreateSockServer(SOCK_DGRAM, ntohl(gConfig.m_iaBindAddress.s_addr), gConfig.m_uServerPort, &fdListenServer) != true)
+	if (CreateSockServer(gConfig.m_ssBindAddress, gConfig.m_slBindAddressLen, &fdListenServer) != true)
 	{
 		printf("CreateSockServer Server Fail\n");
 		goto end;
@@ -205,7 +229,7 @@ int main(int argc, char *argv[])
 			{
 				if (eePollEvent[i].events & EPOLLIN)
 				{
-					struct sockaddr_in addrClient;
+					struct sockaddr_storage addrClient;
 					socklen_t sockLenClient = sizeof(addrClient);
 
 #ifdef WIN32
@@ -243,7 +267,8 @@ int main(int argc, char *argv[])
 					if (spDNSQureyWork->m_spServerConnect->PrepareRecvByRecvFrom(fdEventSock, (sockaddr*)&addrClient, &sockLenClient) != true)
 						continue;
 
-					SOCKET_FD fdConn = UdpAccept(addrClient, gConfig.m_iaBindAddress, gConfig.m_uServerPort);
+					SOCKET_FD fdConn = UdpAccept(addrClient, sockLenClient,
+						gConfig.m_ssBindAddress, gConfig.m_slBindAddressLen);
 
 					if (fdConn == (SOCKET_FD) -1)
 					{

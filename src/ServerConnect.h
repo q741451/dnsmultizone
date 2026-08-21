@@ -17,7 +17,7 @@ public:
 public:
 	void SetInterface(InterfaceServerConnect *ifInterface);
 	bool PrepareRecvByRecvFrom(SOCKET_FD fdSock, sockaddr *addrFrom, socklen_t *pLenAddrFrom);
-	virtual bool Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_in &addrAddrIn);
+	virtual bool Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_storage &addrAddrIn);
 	virtual void Exit();
 	virtual void Clear();
 

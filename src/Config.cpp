@@ -42,6 +42,8 @@ void Config::Reset()
 {
 	m_bIsBackMode = false;
 	m_sFileConfig = "DNSMZConfig.json";
+	memset(&m_ssBindAddress, 0, sizeof(m_ssBindAddress));
+	m_slBindAddressLen = 0;
 }
 
 static bool ZoneInfoCompare(const std::shared_ptr<ZoneInfo> &a, const std::shared_ptr<ZoneInfo> &b)
@@ -71,10 +73,30 @@ bool Config::LoadConfigJson()
 		if (!cJSON_IsString(cjLocalIP) || !cJSON_IsNumber(cjLocalPort))
 			goto end;
 
-		if (inet_pton(AF_INET, cjLocalIP->valuestring, &m_iaBindAddress) <= 0)
-			goto end;
-
 		m_uServerPort = cjLocalPort->valueint;
+
+		// bindIP 填 v6 地址(含 ::)时监听 socket 走双栈，同时收 IPv4
+		memset(&m_ssBindAddress, 0, sizeof(m_ssBindAddress));
+		if (strchr(cjLocalIP->valuestring, ':') != NULL)
+		{
+			struct sockaddr_in6 *psa6 = (struct sockaddr_in6*)&m_ssBindAddress;
+
+			if (inet_pton(AF_INET6, cjLocalIP->valuestring, &psa6->sin6_addr) <= 0)
+				goto end;
+			psa6->sin6_family = AF_INET6;
+			psa6->sin6_port = htons(m_uServerPort);
+			m_slBindAddressLen = sizeof(struct sockaddr_in6);
+		}
+		else
+		{
+			struct sockaddr_in *psa4 = (struct sockaddr_in*)&m_ssBindAddress;
+
+			if (inet_pton(AF_INET, cjLocalIP->valuestring, &psa4->sin_addr) <= 0)
+				goto end;
+			psa4->sin_family = AF_INET;
+			psa4->sin_port = htons(m_uServerPort);
+			m_slBindAddressLen = sizeof(struct sockaddr_in);
+		}
 	}
 
 	cjZones = cJSON_GetObjectItemCaseSensitive(cjMonitor, "zoneList");

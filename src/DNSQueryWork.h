@@ -15,7 +15,7 @@ public:
 
 public:
 	void SetInterface(InterfaceDNSQureyWork *ifInterface);
-	bool Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_in &addrAddrIn);
+	bool Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_storage &addrAddrIn);
 	void Exit();
 	void Clear();
 

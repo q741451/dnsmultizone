@@ -25,7 +25,7 @@ public:
 protected:
 	EPOLL_FD m_fdEPoll;
 	SOCKET_FD m_fdSock;
-	sockaddr_in m_addrClient;
+	sockaddr_storage m_addrClient;
 
 	std::string m_sReadBuff;
 	unsigned int m_nReadOffset;

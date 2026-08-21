@@ -21,7 +21,8 @@ public:
 	std::string m_sFileLog;				// 后台Log位置
 
 	// Json
-	struct in_addr m_iaBindAddress;
+	struct sockaddr_storage m_ssBindAddress;	// 监听地址，v4/v6 都放这里
+	socklen_t m_slBindAddressLen;
 	unsigned short m_uServerPort;
 	std::vector<std::shared_ptr<ZoneInfo>> m_vsZoneInfos;
 

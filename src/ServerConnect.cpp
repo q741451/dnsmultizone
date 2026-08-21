@@ -47,7 +47,7 @@ bool ServerConnect::PrepareRecvByRecvFrom(SOCKET_FD fdSock, sockaddr *addrFrom, 
 	return true;
 }
 
-bool ServerConnect::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_in &addrAddrIn)
+bool ServerConnect::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_storage &addrAddrIn)
 {
 	bool ret = false;
 	int iError = 0;

@@ -12,7 +12,7 @@ void DNSQureyWork::SetInterface(InterfaceDNSQureyWork *ifInterface)
 	m_ifInterface = ifInterface;
 }
 
-bool DNSQureyWork::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_in &addrAddrIn)
+bool DNSQureyWork::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_storage &addrAddrIn)
 {
 	bool ret = false;
 	SOCKET_FD fd = (SOCKET_FD)-1;
