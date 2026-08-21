@@ -13,6 +13,8 @@ An epoll-based multi-zone (multi-upstream) DNS forwarder for Linux. It can split
 
 - High-performance async networking based on `epoll`
 - Multi-zone (multi-upstream DNS) query splitting/forwarding
+- Splits on A, AAAA and the `ipv4hint`/`ipv6hint` carried by SVCB/HTTPS records
+- Dual-stack: listens on IPv4 and IPv6, upstreams may be either family
 - Routing rule files support inotify hot-reload, no restart needed
 - Pure C++11 + POSIX syscalls, no third-party dependencies, fully static-linkable
 - Single JSON config file, parsed with the bundled cJSON
@@ -38,10 +40,11 @@ Command-line options:
 
 See [`config/DNSMZConfig.json.example`](config/DNSMZConfig.json.example). Field reference:
 
-- `bindIP` / `serverPort`: local listen address and port
+- `bindIP` / `serverPort`: local listen address and port. `::` serves IPv4 and IPv6 clients on one socket
 - `zoneList`: routing rule groups, matched in ascending `priority` order
-  - `dnsIP` / `dnsPort`: the upstream DNS used by this zone (or use `resolvFile` to point at a `resolv.conf`-style file that is auto-watched for changes)
-  - `ipList`: list of IP-range rule files that must match for this zone to hit; `inverseIPList` inverts the match, `deny` rejects on match
+  - `dnsIP` / `dnsPort`: the upstream DNS used by this zone, IPv4 or IPv6 (or use `resolvFile` to point at a `resolv.conf`-style file that is auto-watched for changes)
+  - `ipList`: list of IP-range rule files that must match for this zone to hit; `inverseIPList` inverts the match, `deny` rejects on match. IPv4 and IPv6 entries may be mixed in one file, and a file with no entry of a given family has no say about that family
+  - `denyNXDomain`: optional, default `false`. Set it only for an upstream that blocks domains by answering `NXDOMAIN`, so that answer falls through to the next zone instead of being returned as-is
 
 ### Cross-compiling / static multi-arch binaries
 
@@ -105,6 +108,8 @@ Released under [GPL-3.0](LICENSE).
 
 - 基于 `epoll` 的高性能异步网络模型
 - 多 Zone（多上游 DNS）分流转发
+- 分流依据涵盖 A、AAAA，以及 SVCB/HTTPS 记录携带的 `ipv4hint`/`ipv6hint`
+- 双栈：监听端同时服务 IPv4 与 IPv6，上游地址两族皆可
 - 分流规则文件支持 inotify 热加载，无需重启
 - 纯 C++11 + POSIX 系统调用实现，无第三方依赖，可完全静态编译
 - 单文件配置（JSON），基于内置的 cJSON 解析
@@ -130,10 +135,11 @@ make
 
 参见 [`config/DNSMZConfig.json.example`](config/DNSMZConfig.json.example)，字段说明：
 
-- `bindIP` / `serverPort`：本地监听地址和端口
+- `bindIP` / `serverPort`：本地监听地址和端口。填 `::` 时一个 socket 同时服务 IPv4 和 IPv6 客户端
 - `zoneList`：按 `priority` 从小到大依次匹配的分流规则组
-  - `dnsIP` / `dnsPort`：该 Zone 使用的上游 DNS（也可用 `resolvFile` 指向一个 `resolv.conf` 风格文件，自动监听变化）
-  - `ipList`：命中该 Zone 需要满足的 IP 段规则文件列表，`inverseIPList` 表示反选，`deny` 表示命中即拒绝
+  - `dnsIP` / `dnsPort`：该 Zone 使用的上游 DNS，IPv4 或 IPv6 均可（也可用 `resolvFile` 指向一个 `resolv.conf` 风格文件，自动监听变化）
+  - `ipList`：命中该 Zone 需要满足的 IP 段规则文件列表，`inverseIPList` 表示反选，`deny` 表示命中即拒绝。同一文件内可混放 IPv4 与 IPv6 条目，不含某一族条目的文件对该族地址不作判定
+  - `denyNXDomain`：可选，默认 `false`。仅在上游用 `NXDOMAIN` 屏蔽域名时开启，使该应答顺延到下一个 Zone，而不是如实返回
 
 ### 交叉编译 / 多架构静态可执行文件
 
