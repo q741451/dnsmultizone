@@ -24,7 +24,7 @@ bool DNSQureyWork::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_stora
 	if (m_spServerConnect->Init(fdSock, fdEPoll, addrAddrIn) != true)
 		goto end;
 
-	spBaseConnect = std::dynamic_pointer_cast<BaseConnect>(m_spServerConnect);
+	spBaseConnect = std::static_pointer_cast<BaseConnect>(m_spServerConnect);
 	if (gServer.m_spConnectionManager->SaveItem(fdSock, spBaseConnect) != true)
 		goto end;
 
@@ -51,7 +51,7 @@ bool DNSQureyWork::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_stora
 		{
 			if (spDNSConnect->Init(fd, fdEPoll) != true)
 				goto end;
-			spBaseConnect = std::dynamic_pointer_cast<BaseConnect>(spDNSConnect);
+			spBaseConnect = std::static_pointer_cast<BaseConnect>(spDNSConnect);
 			if (gServer.m_spConnectionManager->SaveItem(fd, spBaseConnect) != true)
 				goto end;
 			SLOG_Info("ADD Child: %d", fd);

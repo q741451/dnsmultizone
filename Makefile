@@ -18,19 +18,27 @@ OBJS        = $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(SRCS))
 CXX         ?= g++
 CXXFLAGS    ?= -Wall -std=c++11
 CXXFLAGS    += -I$(SRC_DIR) -Wno-format-security
-CPPFLAGS    ?= -O2
+CPPFLAGS    ?= -Os
 LDFLAGS     ?= -static
 LIBS        ?=
+
+# 静态链接体积优化，赋空值即可关闭：make SIZE_CXXFLAGS= SIZE_LDFLAGS=
+#   本项目不使用异常，也没有向下转型（两处向上转型用 static_pointer_cast
+#   即可），因此可以关掉异常与 RTTI；配合按函数/数据分节和链接期回收，
+#   未被引用的代码不会进入结果。另见 src/CxxRuntime.cpp。
+SIZE_CXXFLAGS ?= -fno-exceptions -fno-rtti -fno-asynchronous-unwind-tables \
+                 -ffunction-sections -fdata-sections
+SIZE_LDFLAGS  ?= -Wl,--gc-sections -Wl,--build-id=none
 
 .PHONY: all clean
 
 all: $(BIN)
 
 $(BIN): $(OBJS)
-	$(CXX) $(CPPFLAGS) $(OBJS) -o $@ $(LIBS) $(LDFLAGS)
+	$(CXX) $(CPPFLAGS) $(OBJS) -o $@ $(LIBS) $(LDFLAGS) $(SIZE_LDFLAGS)
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(SIZE_CXXFLAGS) $(CPPFLAGS) -c $< -o $@
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
