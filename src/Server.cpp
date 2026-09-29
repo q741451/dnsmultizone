@@ -135,22 +135,25 @@ int main(int argc, char *argv[])
 	std::string sPreReadBuffer;
 #endif
 
+	// procd / syslog 读的是管道，行缓冲才能逐行及时送达
+	setvbuf(stdout, (char *)NULL, _IOLBF, BUFSIZ);
+
 	if (gConfig.Init(argc, argv) != true)
 	{
-		printf("Config.Init Fail\n");
+		SLOG_Error("Config.Init Fail");
 		goto end;
 	}
 
 	if (gConfig.LoadConfig() != true)
 	{
-		printf("Config.LoadConfig Fail\n");
+		SLOG_Error("Config.LoadConfig Fail");
 		goto end;
 	}
 
 #ifdef _WIN32
 	if (NetInit() != true)
 	{
-		printf("NetInit Fail\n");
+		SLOG_Error("NetInit Fail");
 		goto end;
 	}
 #endif
@@ -159,19 +162,19 @@ int main(int argc, char *argv[])
 
 	if ((fdEPoll = epoll_create(5)) == (EPOLL_FD)-1)
 	{
-		printf("epoll_create error\n");
+		SLOG_Error("epoll_create error");
 		goto end;
 	}
 
 	if (CreateSockServer(gConfig.m_ssBindAddress, gConfig.m_slBindAddressLen, &fdListenServer) != true)
 	{
-		printf("CreateSockServer Server Fail\n");
+		SLOG_Error("CreateSockServer Server Fail");
 		goto end;
 	}
 
 	if ((fdExitEvent = socket(PF_INET, SOCK_DGRAM, 0)) == -1)
 	{
-		printf("CreateEvent Exit Fail\n");
+		SLOG_Error("CreateEvent Exit Fail");
 		goto end;
 	}
 
@@ -179,13 +182,14 @@ int main(int argc, char *argv[])
 #ifndef _WIN32
 	if (gConfig.m_bIsBackMode)
 	{
-		printf("Enter background mode running\n");
+		SLOG_Info("Enter background mode running");
 		daemon(1, gConfig.m_sFileLog.size() > 0 ? 1 : 0);
 		if (gConfig.m_sFileLog.size() > 0)
 		{
 			freopen(gConfig.m_sFileLog.c_str(), "w", stdout);
 			setvbuf(stdout, (char *)NULL, _IOLBF, BUFSIZ);
 			freopen(gConfig.m_sFileLog.c_str(), "a", stderr);
+			SLog::SetTimestamp(true);
 		}
 	}
 #endif
@@ -204,7 +208,7 @@ int main(int argc, char *argv[])
 
 #endif
 
-	SLOG_Info("Server Start!");
+	SLOG_Info("Server start, listen %s", Util::AddrToString(gConfig.m_ssBindAddress).c_str());
 
 	gFdExitEvent = fdExitEvent;
 	gFdEPollExit = fdEPoll;
@@ -278,13 +282,13 @@ int main(int argc, char *argv[])
 
 					if (spDNSQureyWork->Init(fdConn, fdEPoll, addrClient) != true)
 					{
-						SLOG_Error("spDNSQureyWork Init failed!\n");
+						SLOG_Error("spDNSQureyWork Init failed!");
 						goto end;
 					}
 
 					if (gServer.m_spWorkManager->SaveWork(fdConn, spDNSQureyWork) != true)
 					{
-						SLOG_Error("spWorkManager SaveWork failed!\n");
+						SLOG_Error("spWorkManager SaveWork failed!");
 						goto end;
 					}
 
@@ -299,13 +303,13 @@ int main(int argc, char *argv[])
 				}
 				else
 				{
-					SLOG_Error("fdListen Error!\n");
+					SLOG_Error("fdListen Error!");
 					goto end;
 				}
 			}
 			else if (fdEventSock == fdExitEvent)
 			{
-				SLOG_Info("fdExitEvent acitve!\n");
+				SLOG_Info("fdExitEvent active");
 				goto end;
 			}
 #ifndef WIN32
@@ -313,7 +317,7 @@ int main(int argc, char *argv[])
 			{
 				if (spFileINotify->INotify() != true)
 				{
-					SLOG_Error("INotify Error!\n");
+					SLOG_Error("INotify Error!");
 					goto end;
 				}
 			}
@@ -327,7 +331,7 @@ int main(int argc, char *argv[])
 				{
 					if (gServer.m_spConnectionManager->GetItem(fdEventSock, spSession) != true)
 					{
-						SLOG_Error("spConnectionManagerDNS->GetItem Error failed!\n");
+						SLOG_Error("spConnectionManagerDNS->GetItem Error failed!");
 						removefd(fdEPoll, fdEventSock);
 						SOCKET_CLOSE(fdEventSock);
 					}
@@ -340,7 +344,7 @@ int main(int argc, char *argv[])
 				{
 					if (gServer.m_spConnectionManager->GetItem(fdEventSock, spSession) != true)
 					{
-						SLOG_Error("spConnectionManagerDNS->GetItem EPollIn failed! fd = %d", fdEventSock);
+						SLOG_Debug("spConnectionManagerDNS->GetItem EPollIn failed! fd = %d", fdEventSock);
 						removefd(fdEPoll, fdEventSock);
 						SOCKET_CLOSE(fdEventSock);
 					}
@@ -362,7 +366,7 @@ int main(int argc, char *argv[])
 				{
 					if (gServer.m_spConnectionManager->GetItem(fdEventSock, spSession) != true)
 					{
-						SLOG_Error("spConnectionManagerDNS->GetItem EPollOut failed! fd = %d", fdEventSock);
+						SLOG_Debug("spConnectionManagerDNS->GetItem EPollOut failed! fd = %d", fdEventSock);
 						removefd(fdEPoll, fdEventSock);
 						SOCKET_CLOSE(fdEventSock);
 					}
@@ -374,7 +378,7 @@ int main(int argc, char *argv[])
 				}
 				else
 				{
-					SLOG_Error("Unknown EPoll!\n");
+					SLOG_Error("Unknown EPoll!");
 				}
 			}
 		}

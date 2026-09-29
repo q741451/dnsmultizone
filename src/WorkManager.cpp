@@ -32,7 +32,7 @@ void WorkManager::ClearTimeout()
 	std::map<SOCKET_FD, WorkManager::ITEM_TYPE>::iterator iterDNSQureyWork;
 	unsigned long long llNow = Util::GetRuntimeInMs();
 
-	SLOG_Info("ClearTimeout, all work count = %u", (unsigned int)m_mssKeyValuePairs.size());
+	size_t szBefore = m_mssKeyValuePairs.size();
 
 	for (iterDNSQureyWork = m_mssKeyValuePairs.begin(); iterDNSQureyWork != m_mssKeyValuePairs.end(); )
 	{
@@ -46,7 +46,7 @@ void WorkManager::ClearTimeout()
 			++iterDNSQureyWork;
 	}
 
-	SLOG_Info("ClearTimeout, Done!");
+	SLOG_Debug("ClearTimeout %u -> %u sessions", (unsigned int)szBefore, (unsigned int)m_mssKeyValuePairs.size());
 }
 
 void WorkManager::ExitAndClear()

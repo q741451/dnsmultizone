@@ -1,11 +1,29 @@
 #include "stdafx.h"
 
+static bool s_bDebug = false;
+static bool s_bTimestamp = false;
+
+void SLog::SetDebug(bool bDebug)
+{
+	s_bDebug = bDebug;
+}
+
+bool SLog::IsDebug()
+{
+	return s_bDebug;
+}
+
+void SLog::SetTimestamp(bool bTimestamp)
+{
+	s_bTimestamp = bTimestamp;
+}
+
 void SLog::LogDebug(const char* format, ...)
 {
 	va_list args;
 
 	va_start(args, format);
-	LogLog("DEBUG", format, args);
+	LogLog(stdout, "DEBUG", format, args);
 	va_end(args);
 }
 
@@ -14,7 +32,7 @@ void SLog::LogInfo(const char* format, ...)
 	va_list args;
 
 	va_start(args, format);
-	LogLog("INFO ", format, args);
+	LogLog(stdout, "INFO ", format, args);
 	va_end(args);
 }
 
@@ -23,7 +41,7 @@ void SLog::LogWarn(const char* format, ...)
 	va_list args;
 
 	va_start(args, format);
-	LogLog("WARN ", format, args);
+	LogLog(stderr, "WARN ", format, args);
 	va_end(args);
 }
 
@@ -32,46 +50,29 @@ void SLog::LogError(const char* format, ...)
 	va_list args;
 
 	va_start(args, format);
-	LogLog("ERROR", format, args);
+	LogLog(stderr, "ERROR", format, args);
 	va_end(args);
 }
 
-bool SLog::LogLog(const char* cTitile, const char* format, va_list pargs)
+bool SLog::LogLog(FILE* fOut, const char* cTitile, const char* format, va_list pargs)
 {
-	unsigned int nLen;
-	unsigned int nUseLen;
-	char *cLog = NULL;
-	bool ret = false;
-	va_list args;
+	char cHead[32] = { 0 };
 	time_t time_seconds = time(NULL);
 	struct tm now_time;
 
-	va_copy(args, pargs);
-	nLen = vsnprintf(NULL, 0, format, args);
-	va_end(args);
-
-	nLen += (unsigned int)(strlen("%s%08X ") + strlen(cTitile) + 0x10 + 0x10);
-
-	cLog = (char*)malloc(nLen);
-
+	if (s_bTimestamp)
+	{
 #ifdef _WIN32
-	localtime_s(&now_time, &time_seconds);
-	sprintf_s(cLog, nLen, "%02u%02u%02u%02u%02u %s %08X ", now_time.tm_mon + 1, now_time.tm_mday, now_time.tm_hour, now_time.tm_min, now_time.tm_sec, cTitile, GetCurrentThreadId());
+		localtime_s(&now_time, &time_seconds);
 #else
-	localtime_r(&time_seconds, &now_time);
-	sprintf(cLog, "%02u%02u%02u%02u%02u %s %08X ", now_time.tm_mon + 1, now_time.tm_mday, now_time.tm_hour, now_time.tm_min, now_time.tm_sec, cTitile, (unsigned int)syscall(SYS_gettid));
+		localtime_r(&time_seconds, &now_time);
 #endif
-	
-	nUseLen = (unsigned int)strlen(cLog);
+		snprintf(cHead, sizeof(cHead), "%02u%02u%02u%02u%02u ", now_time.tm_mon + 1, now_time.tm_mday,
+			now_time.tm_hour, now_time.tm_min, now_time.tm_sec);
+	}
 
-	va_copy(args, pargs);
-	vsnprintf(cLog + nUseLen, nLen - nUseLen, format, args);
-	va_end(args);
+	fprintf(fOut, "%s%s ", cHead, cTitile);
+	vfprintf(fOut, format, pargs);
 
-	printf("%s", cLog);
-
-	ret = true;
-// end:
-	if (cLog) free(cLog);
-	return ret;
+	return true;
 }

@@ -12,6 +12,9 @@ public:
 
 	static unsigned long long GetRuntimeInMs();
 
+	// 格式为 "1.2.3.4:53" / "[::1]:53"，未设置时返回 "-"
+	static std::string AddrToString(const sockaddr_storage &ssAddr);
+
 #ifdef _WIN32
 	static std::string UnicodeToUTF8(const wchar_t* str);
 

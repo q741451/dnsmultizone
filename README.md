@@ -36,6 +36,7 @@ Command-line options:
 | `-l <file>` | Log output file (used together with `-b 1` daemon mode) |
 | `-b <0/1>`  | Whether to run as a background daemon |
 | `-p <port>` | Override the config file's listen port (`serverPort`) |
+| `-v`        | Verbose: also log per-query debug messages |
 
 #### Example config
 
@@ -132,6 +133,7 @@ make
 | `-l <file>` | 日志输出文件（配合 `-b 1` 后台模式使用）|
 | `-b <0/1>`  | 是否以后台守护进程模式运行 |
 | `-p <port>` | 覆盖配置文件中的监听端口（`serverPort`）|
+| `-v`        | 输出调试日志（逐个查询的明细）|
 
 #### 配置文件示例
 

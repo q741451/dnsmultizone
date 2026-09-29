@@ -70,7 +70,7 @@ bool FileINotify::Init(EPOLL_FD fdEPoll)
 			goto end;
 		}
 
-		SLOG_Info("Add watch, Ori File = %s, Path = %s, Name = %s", spZoneInfo->m_rcfResolvConf.m_sResolvConfFile.c_str(), sRealPath.c_str(), sRealFileName.c_str());
+		SLOG_Debug("Add watch, Ori File = %s, Path = %s, Name = %s", spZoneInfo->m_rcfResolvConf.m_sResolvConfFile.c_str(), sRealPath.c_str(), sRealFileName.c_str());
 
 		if ((wd = inotify_add_watch(m_fdINotify, sRealPath.c_str(), IN_CLOSE_WRITE | IN_MOVED_TO)) == -1)
 		{
@@ -159,16 +159,16 @@ bool FileINotify::INotify()
 		if (m_ssWatchFile.find(std::string(in->name)) != m_ssWatchFile.end())
 		{
 			hit = 1;
-			SLOG_Info("INotify hit wd = %d, mask = %d, cookie = %d len = %d", in->wd, in->mask, in->cookie, in->len);
+			SLOG_Debug("INotify hit wd = %d, mask = %d, cookie = %d len = %d", in->wd, in->mask, in->cookie, in->len);
 			if (in->len > 0)
-				SLOG_Info("INotify hit name = %s", in->name);
+				SLOG_Debug("INotify hit name = %s", in->name);
 		}
 
 	}
 
 	if (hit == 1)
 	{
-		SLOG_Info("INotify hit");
+		SLOG_Debug("INotify hit");
 		gConfig.RefreshResolvConf();
 	}
 

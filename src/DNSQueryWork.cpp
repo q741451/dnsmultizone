@@ -31,12 +31,12 @@ bool DNSQureyWork::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_stora
 #ifdef WIN32
 	if (gServer.m_spWin32ConnectionManager->SaveItem(m_spServerConnect->m_ulClientInfoWin32, fdSock) != true)
 	{
-		SLOG_Error("spWin32ConnectionManager SaveSession failed!\n");
+		SLOG_Error("spWin32ConnectionManager SaveSession failed!");
 		goto end;
 	}
 #endif
 
-	SLOG_Info("ADD: %d", fdSock);
+	SLOG_Debug("ADD client %s fd %d", Util::AddrToString(addrAddrIn).c_str(), fdSock);
 
 	for (iterZoneInfo = gConfig.m_vsZoneInfos.begin(), i = 0; iterZoneInfo != gConfig.m_vsZoneInfos.end(); ++iterZoneInfo, i++)
 	{
@@ -45,7 +45,12 @@ bool DNSQureyWork::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_stora
 		{
 			// 挂了让他挂
 			spDNSConnect->Init(-1, fdEPoll);
-			SLOG_Info("ADD Error Child: %d", -1);
+			if ((*iterZoneInfo)->m_bIsUpstreamDown == false)
+			{
+				(*iterZoneInfo)->m_bIsUpstreamDown = true;
+				SLOG_Warn("zone %s: upstream %s unavailable", (*iterZoneInfo)->m_sName.c_str(),
+					(*iterZoneInfo)->m_bIsDNSAddrOK ? Util::AddrToString((*iterZoneInfo)->m_ssDNSAddr).c_str() : "-");
+			}
 		}
 		else
 		{
@@ -54,7 +59,14 @@ bool DNSQureyWork::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_stora
 			spBaseConnect = std::static_pointer_cast<BaseConnect>(spDNSConnect);
 			if (gServer.m_spConnectionManager->SaveItem(fd, spBaseConnect) != true)
 				goto end;
-			SLOG_Info("ADD Child: %d", fd);
+			if ((*iterZoneInfo)->m_bIsUpstreamDown)
+			{
+				(*iterZoneInfo)->m_bIsUpstreamDown = false;
+				SLOG_Info("zone %s: upstream %s available", (*iterZoneInfo)->m_sName.c_str(),
+					Util::AddrToString((*iterZoneInfo)->m_ssDNSAddr).c_str());
+			}
+			SLOG_Debug("ADD child fd %d zone %s upstream %s", fd, (*iterZoneInfo)->m_sName.c_str(),
+				Util::AddrToString((*iterZoneInfo)->m_ssDNSAddr).c_str());
 		}
 		spDNSConnect->m_nIndex = i;
 		spDNSConnect->SetInterface(this);
@@ -74,16 +86,19 @@ void DNSQureyWork::Exit()
 	{
 		if ((*iterDNSConnect)->GetSockFd() != (SOCKET_FD)-1)
 		{
-			SLOG_Info("DEL Child: %d", (*iterDNSConnect)->GetSockFd());
+			SLOG_Debug("DEL child fd %d zone %s", (*iterDNSConnect)->GetSockFd(),
+				gConfig.m_vsZoneInfos[(*iterDNSConnect)->m_nIndex]->m_sName.c_str());
 			gServer.m_spConnectionManager->DeleteItem((*iterDNSConnect)->GetSockFd());
 		}
 		else
-			SLOG_Info("DEL Error Child: %d", (*iterDNSConnect)->GetSockFd());
+			SLOG_Debug("DEL child zone %s (no upstream)",
+				gConfig.m_vsZoneInfos[(*iterDNSConnect)->m_nIndex]->m_sName.c_str());
 			
 		(*iterDNSConnect)->Exit();
 	}
 
-	SLOG_Info("DEL: %d", m_spServerConnect->GetSockFd());
+	SLOG_Debug("DEL client %s fd %d", Util::AddrToString(m_spServerConnect->GetClientAddr()).c_str(),
+		m_spServerConnect->GetSockFd());
 	gServer.m_spConnectionManager->DeleteItem(m_spServerConnect->GetSockFd());
 #ifdef WIN32
 	gServer.m_spWin32ConnectionManager->DeleteItem(m_spServerConnect->m_ulClientInfoWin32);

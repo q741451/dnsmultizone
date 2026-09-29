@@ -11,7 +11,7 @@ bool Config::Init(int argc, char *argv[])
 {
 	int ch;
 
-	while ((ch = getopt(argc, argv, "b:l:c:p:")) != -1)
+	while ((ch = getopt(argc, argv, "b:l:c:p:v")) != -1)
 	{
 		switch (ch)
 		{
@@ -36,14 +36,17 @@ bool Config::Init(int argc, char *argv[])
 
 			if (*optarg == '\0' || *pEnd != '\0' || lPort <= 0 || lPort > 65535)
 			{
-				printf("Invalid port: %s\n", optarg);
+				SLOG_Error("Invalid port: %s", optarg);
 				return false;
 			}
 			m_nPortOverride = (int)lPort;
 			break;
 		}
+		case 'v':
+			SLog::SetDebug(true);
+			break;
 		case '?':
-			printf("Unknown option: %c\n", (char)optopt);
+			SLOG_Error("Unknown option: %c", (char)optopt);
 			break;
 		}
 	}
@@ -209,7 +212,7 @@ bool Config::LoadConfigJson()
 
 			if (spIPInfo->LoadFile() != true)
 			{
-				printf("spIPInfo->LoadFile() failed\n");
+				SLOG_Error("Load ipList %s failed", spIPInfo->m_sFileName.c_str());
 				goto end;
 			}
 
@@ -271,7 +274,7 @@ void Config::RefreshResolvConf()
 		
 		// 需要刷新
 		memset(&spZoneInfo->m_ssDNSAddr, 0, sizeof(spZoneInfo->m_ssDNSAddr));
-		SLOG_Info("Loading file = %s", spZoneInfo->m_rcfResolvConf.m_sResolvConfFile.c_str());
+		SLOG_Info("Reload resolv file %s", spZoneInfo->m_rcfResolvConf.m_sResolvConfFile.c_str());
 
 		spZoneInfo->m_rcfResolvConf.m_tResolvConfFileTime = statbuf.st_mtime;
 

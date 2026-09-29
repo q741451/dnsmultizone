@@ -204,3 +204,28 @@ end:
 }
 
 #endif
+
+std::string Util::AddrToString(const sockaddr_storage &ssAddr)
+{
+	char cIP[INET6_ADDRSTRLEN] = { 0 };
+	char cOut[INET6_ADDRSTRLEN + 16] = { 0 };
+
+	if (ssAddr.ss_family == AF_INET)
+	{
+		const struct sockaddr_in *psa4 = (const struct sockaddr_in*)&ssAddr;
+
+		inet_ntop(AF_INET, &psa4->sin_addr, cIP, sizeof(cIP));
+		snprintf(cOut, sizeof(cOut), "%s:%u", cIP, ntohs(psa4->sin_port));
+	}
+	else if (ssAddr.ss_family == AF_INET6)
+	{
+		const struct sockaddr_in6 *psa6 = (const struct sockaddr_in6*)&ssAddr;
+
+		inet_ntop(AF_INET6, &psa6->sin6_addr, cIP, sizeof(cIP));
+		snprintf(cOut, sizeof(cOut), "[%s]:%u", cIP, ntohs(psa6->sin6_port));
+	}
+	else
+		return "-";
+
+	return cOut;
+}

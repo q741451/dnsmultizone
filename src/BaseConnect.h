@@ -19,6 +19,7 @@ public:
 	virtual void Disconnect() = 0;
 
 	SOCKET_FD GetSockFd();
+	const sockaddr_storage &GetClientAddr() { return m_addrClient; }
 
 	void SetPreReadBuff(std::string &sPreReadBuff);
 
