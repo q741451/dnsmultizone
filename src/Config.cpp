@@ -11,7 +11,7 @@ bool Config::Init(int argc, char *argv[])
 {
 	int ch;
 
-	while ((ch = getopt(argc, argv, "b:l:c:")) != -1)
+	while ((ch = getopt(argc, argv, "b:l:c:p:")) != -1)
 	{
 		switch (ch)
 		{
@@ -29,6 +29,19 @@ bool Config::Init(int argc, char *argv[])
 			if (optarg)
 				m_sFileConfig = optarg;
 			break;
+		case 'p':
+		{
+			char *pEnd = NULL;
+			long lPort = strtol(optarg, &pEnd, 10);
+
+			if (*optarg == '\0' || *pEnd != '\0' || lPort <= 0 || lPort > 65535)
+			{
+				printf("Invalid port: %s\n", optarg);
+				return false;
+			}
+			m_nPortOverride = (int)lPort;
+			break;
+		}
 		case '?':
 			printf("Unknown option: %c\n", (char)optopt);
 			break;
@@ -42,8 +55,30 @@ void Config::Reset()
 {
 	m_bIsBackMode = false;
 	m_sFileConfig = "DNSMZConfig.json";
+	m_nPortOverride = 0;
 	memset(&m_ssBindAddress, 0, sizeof(m_ssBindAddress));
 	m_slBindAddressLen = 0;
+}
+
+// 读配置文件，再用命令行覆盖全局项
+bool Config::LoadConfig()
+{
+	struct sockaddr_in *psa4 = (struct sockaddr_in*)&m_ssBindAddress;
+	struct sockaddr_in6 *psa6 = (struct sockaddr_in6*)&m_ssBindAddress;
+
+	if (LoadConfigJson() != true)
+		return false;
+
+	if (m_nPortOverride != 0)
+	{
+		m_uServerPort = (unsigned short)m_nPortOverride;
+		if (m_ssBindAddress.ss_family == AF_INET6)
+			psa6->sin6_port = htons(m_uServerPort);
+		else
+			psa4->sin_port = htons(m_uServerPort);
+	}
+
+	return true;
 }
 
 static bool ZoneInfoCompare(const std::shared_ptr<ZoneInfo> &a, const std::shared_ptr<ZoneInfo> &b)

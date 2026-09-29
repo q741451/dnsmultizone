@@ -141,9 +141,9 @@ int main(int argc, char *argv[])
 		goto end;
 	}
 
-	if (gConfig.LoadConfigJson() != true)
+	if (gConfig.LoadConfig() != true)
 	{
-		printf("Config.LoadConfigJson Fail\n");
+		printf("Config.LoadConfig Fail\n");
 		goto end;
 	}
 
