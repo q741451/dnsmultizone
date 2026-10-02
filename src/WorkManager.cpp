@@ -6,9 +6,9 @@ WorkManager::ITEM_TYPE WorkManager::AllocWork()
 	return spWork;
 }
 
-bool WorkManager::SaveWork(SOCKET_FD fd, ITEM_TYPE &wkWork)
+bool WorkManager::SaveWork(const std::string &sKey, ITEM_TYPE &wkWork)
 {
-	if (SaveItem(fd, wkWork) != true)
+	if (SaveItem(sKey, wkWork) != true)
 		return false;
 
 	wkWork->SetInterface(this);
@@ -16,20 +16,31 @@ bool WorkManager::SaveWork(SOCKET_FD fd, ITEM_TYPE &wkWork)
 	return true;
 }
 
-void WorkManager::DNSQureyWorkClose(SOCKET_FD fdServer)
+void WorkManager::DNSQureyWorkClose(const std::string &sKey)
 {
+	m_ssIdle.insert(sKey);
+}
+
+// 记下之后同一轮里又来了新查询的事务，留着
+void WorkManager::CloseIdle()
+{
+	std::set<std::string>::iterator iterKey;
 	WorkManager::ITEM_TYPE spDNSQureyWork;
 
-	if (GetItem(fdServer, spDNSQureyWork) != true)
-		return;
+	for (iterKey = m_ssIdle.begin(); iterKey != m_ssIdle.end(); ++iterKey)
+	{
+		if (GetItem(*iterKey, spDNSQureyWork) != true || spDNSQureyWork->IsIdle() != true)
+			continue;
 
-	spDNSQureyWork->Exit();
-	DeleteItem(fdServer);
+		spDNSQureyWork->Exit();
+		DeleteItem(*iterKey);
+	}
+	m_ssIdle.clear();
 }
 
 void WorkManager::ClearTimeout()
 {
-	std::map<SOCKET_FD, WorkManager::ITEM_TYPE>::iterator iterDNSQureyWork;
+	std::map<std::string, WorkManager::ITEM_TYPE>::iterator iterDNSQureyWork;
 	unsigned long long llNow = Util::GetRuntimeInMs();
 
 	size_t szBefore = m_mssKeyValuePairs.size();
@@ -51,7 +62,7 @@ void WorkManager::ClearTimeout()
 
 void WorkManager::ExitAndClear()
 {
-	std::map<SOCKET_FD, WorkManager::ITEM_TYPE>::iterator iterDNSQureyWork;
+	std::map<std::string, WorkManager::ITEM_TYPE>::iterator iterDNSQureyWork;
 
 	for (iterDNSQureyWork = m_mssKeyValuePairs.begin(); iterDNSQureyWork != m_mssKeyValuePairs.end(); ++iterDNSQureyWork)
 	{

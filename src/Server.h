@@ -8,15 +8,25 @@ public:
 	{
 		m_spConnectionManager = std::make_shared<ConnectionManager>();
 		m_spWorkManager = std::make_shared<WorkManager>();
-#ifdef WIN32
-		m_spWin32ConnectionManager = std::make_shared<Win32ConnectionManager>();
-#endif
+		m_fdListen = (SOCKET_FD)-1;
+		m_fdEPoll = (EPOLL_FD)-1;
 	}
-	std::shared_ptr<ConnectionManager> m_spConnectionManager;
+
+	// 共享监听 socket：收所有客户端的查询，按来源地址交给事务；应答也从它发回
+	void OnListenRead();
+	void OnListenWrite();
+	bool SendTo(const sockaddr_storage &ssAddr, const std::string &sData);
+
+	std::shared_ptr<ConnectionManager> m_spConnectionManager;	// 上游 socket
 	std::shared_ptr<WorkManager> m_spWorkManager;
-#ifdef WIN32
-	std::shared_ptr<Win32ConnectionManager> m_spWin32ConnectionManager;
-#endif
+	SOCKET_FD m_fdListen;
+	EPOLL_FD m_fdEPoll;
+
+private:
+	void UpdateListenEvents();
+
+	// 发送缓冲满时暂存的应答
+	std::list<std::pair<sockaddr_storage, std::string>> m_lsSendQueue;
 };
 
 extern Server gServer;

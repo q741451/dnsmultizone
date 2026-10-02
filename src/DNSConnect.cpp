@@ -40,17 +40,8 @@ bool DNSConnect::Read()
 {
 	int iLen = 0;
 
-	if (m_sPreReadBuff.size() > 0)
-	{
-		iLen = (int)((m_sReadBuff.size() - m_nReadOffset) > m_sPreReadBuff.size() ? m_sPreReadBuff.size() : (m_sReadBuff.size() - m_nReadOffset));
-		memcpy((char*)m_sReadBuff.c_str() + m_nReadOffset, m_sPreReadBuff.c_str(), iLen);
-		m_sPreReadBuff.clear();
-	}
-	else
-	{
-		if ((iLen = recv(m_fdSock, (char*)m_sReadBuff.c_str() + m_nReadOffset, (int)m_sReadBuff.size() - m_nReadOffset, 0)) < 0 && (errno != EINTR && errno != EWOULDBLOCK && errno != EAGAIN))
-			return false;
-	}
+	if ((iLen = recv(m_fdSock, (char*)m_sReadBuff.c_str() + m_nReadOffset, (int)m_sReadBuff.size() - m_nReadOffset, 0)) < 0 && (errno != EINTR && errno != EWOULDBLOCK && errno != EAGAIN))
+		return false;
 
 	if (iLen > 0)
 	{

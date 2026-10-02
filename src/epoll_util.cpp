@@ -36,7 +36,6 @@ void addfd(EPOLL_FD epollfd, SOCKET_FD fd, int ev, bool one_shot)
 void removefd(EPOLL_FD epollfd, SOCKET_FD fd)
 {
 	epoll_ctl(epollfd, EPOLL_CTL_DEL, fd, 0);
-	SOCKET_CLOSE(fd);
 }
 
 int modfd(EPOLL_FD epollfd, SOCKET_FD fd, int ev)

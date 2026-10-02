@@ -9,15 +9,12 @@ bool BaseConnect::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll)
 {
 	bool ret = false;
 	int iError = 0;
-	int iReuse = 1;
 	socklen_t slLen = sizeof(iError);
 
 	m_fdSock = fdSock;
 	m_fdEPoll = fdEPoll;
 
 	if (getsockopt(m_fdSock, SOL_SOCKET, SO_ERROR, (char*)&iError, &slLen) != 0)
-		goto end;
-	if (setsockopt(m_fdSock, SOL_SOCKET, SO_REUSEADDR, (char*)&iReuse, sizeof(iReuse)) != 0)
 		goto end;
 
 	ret = true;
@@ -41,7 +38,6 @@ void BaseConnect::Clear()
 	m_fdSock = (SOCKET_FD)-1;
 	m_nReadOffset = 0;
 	m_nWriteOffset = 0;
-	memset(&m_addrClient, 0, sizeof(m_addrClient));
 	m_sReadBuff.clear();
 	m_sWriteBuff.clear();
 	m_lsReadQueue.clear();
@@ -53,7 +49,3 @@ SOCKET_FD BaseConnect::GetSockFd()
 	return m_fdSock;
 }
 
-void BaseConnect::SetPreReadBuff(std::string &sPreReadBuff)
-{
-	m_sPreReadBuff = sPreReadBuff;
-}

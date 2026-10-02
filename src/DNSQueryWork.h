@@ -4,7 +4,7 @@
 class InterfaceDNSQureyWork
 {
 public:
-	virtual void DNSQureyWorkClose(SOCKET_FD fdServer) = 0;
+	virtual void DNSQureyWorkClose(const std::string &sKey) = 0;
 };
 
 class DNSQureyWork : public InterfaceDNSConnect, public InterfaceServerConnect
@@ -15,12 +15,13 @@ public:
 
 public:
 	void SetInterface(InterfaceDNSQureyWork *ifInterface);
-	bool Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_storage &addrAddrIn);
+	bool Init(const sockaddr_storage &addrClient, EPOLL_FD fdEPoll);
 	void Exit();
 	void Clear();
 
+	bool IsIdle() { return m_mwDNSQureyWorkItems.empty(); }
+
 	// Server
-	virtual void ServerDisconnect();
 	virtual void ServerNewWork(unsigned short nID, unsigned short uQType, std::string &sDNSData);
 
 	// DNS
@@ -34,9 +35,11 @@ public:
 private:
 	InterfaceDNSQureyWork	*m_ifInterface;
 
+	std::string								m_sKey;
 	std::map<unsigned short, std::shared_ptr<DNSQureyWorkItem>>	m_mwDNSQureyWorkItems;
 
 	SOCKET_FD ConnectToHost(ZoneInfo &ziZoneInfo);
+	void Finish(unsigned short nID);
 };
 
 

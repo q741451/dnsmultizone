@@ -1,7 +1,9 @@
 #include "stdafx.h"
 
 #define MAX_EVENT_NUMBER 10000
-#define DEF_GARBAGE_CLEAN_HIT 0x80
+#define DEF_CLEAN_INTERVAL 1000		// ms：超时事务的清理间隔，也是 epoll_wait 的超时
+#define DEF_CLIENT_PKG_LEN 0x400
+#define DEF_READ_PER_EVENT 64		// 监听 socket 一次事件最多读几个包，余下的下一轮再读
 
 #ifdef _WIN32
 static bool NetInit()
@@ -24,98 +26,104 @@ static void SigEventInt(int sig)
 		modfd(gFdEPollExit, gFdExitEvent, EPOLLOUT);
 }
 
-// 以下三个 helper 抄自 quictun 的 quictun_socket_util.cc：
-// 共享监听 socket 与每连接 socket 用同一套选项，IPv6 一律关掉 V6ONLY 走双栈
-
-static bool SetReuseAddrAndPort(SOCKET_FD fd)
+// 监听 socket：SO_REUSEADDR 允许别的实例绑定同一端口（包只交给其中一个）。绑到 IPv6 地址时
+// 关掉 V6ONLY 走双栈，必须显式设置：net.ipv6.bindv6only 可能被系统改成 1，不能依赖内核默认值
+static bool CreateSockServer(const struct sockaddr_storage &ssBind, socklen_t slBindLen, SOCKET_FD *pFd)
 {
 	int iReuse = 1;
+	int iV6Only = 0;
 
-	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char*)&iReuse, sizeof(iReuse)) != 0)
+	if ((*pFd = socket(ssBind.ss_family, SOCK_DGRAM, 0)) == (SOCKET_FD)-1)
 		return false;
 
-#ifdef SO_REUSEPORT
-	if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, (char*)&iReuse, sizeof(iReuse)) != 0)
+	if (setsockopt(*pFd, SOL_SOCKET, SO_REUSEADDR, (char*)&iReuse, sizeof(iReuse)) != 0)
 		return false;
-#endif
 
+	if (ssBind.ss_family == AF_INET6 &&
+		setsockopt(*pFd, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&iV6Only, sizeof(iV6Only)) != 0)
+		return false;
+
+	return bind(*pFd, (struct sockaddr*)&ssBind, slBindLen) == 0;
+}
+
+static socklen_t AddrLen(const sockaddr_storage &ssAddr)
+{
+	return ssAddr.ss_family == AF_INET6 ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
+}
+
+void Server::OnListenRead()
+{
+	std::string sBuffer;
+	sockaddr_storage addrClient;
+	socklen_t slClient = 0;
+	std::string sKey;
+	WorkManager::ITEM_TYPE spDNSQureyWork;
+	int iLen = 0;
+	int i = 0;
+
+	for (i = 0; i < DEF_READ_PER_EVENT; i++)
+	{
+		sBuffer.resize(DEF_CLIENT_PKG_LEN);
+		slClient = sizeof(addrClient);
+		if ((iLen = recvfrom(m_fdListen, (char*)sBuffer.c_str(), (int)sBuffer.size(), 0, (sockaddr*)&addrClient, &slClient)) <= 0)
+			break;
+		sBuffer.resize(iLen);
+
+		sKey = Util::AddrToString(addrClient);
+		if (m_spWorkManager->GetItem(sKey, spDNSQureyWork) != true)
+		{
+			spDNSQureyWork = WorkManager::AllocWork();
+			if (spDNSQureyWork->Init(addrClient, m_fdEPoll) != true || m_spWorkManager->SaveWork(sKey, spDNSQureyWork) != true)
+			{
+				SLOG_Error("client %s: work init failed", sKey.c_str());
+				spDNSQureyWork->Exit();
+				continue;
+			}
+		}
+
+		spDNSQureyWork->m_spServerConnect->OnRecvData(sBuffer);
+	}
+}
+
+void Server::OnListenWrite()
+{
+	while (m_lsSendQueue.size() > 0)
+	{
+		if (sendto(m_fdListen, m_lsSendQueue.front().second.c_str(), (int)m_lsSendQueue.front().second.size(), 0,
+			(const sockaddr*)&m_lsSendQueue.front().first, AddrLen(m_lsSendQueue.front().first)) < 0 &&
+			(errno == EINTR || errno == EWOULDBLOCK || errno == EAGAIN))
+			break;
+		// 发出去了，或者是发不出去的错误：都不再留着
+		m_lsSendQueue.pop_front();
+	}
+
+	UpdateListenEvents();
+}
+
+bool Server::SendTo(const sockaddr_storage &ssAddr, const std::string &sData)
+{
+	if (m_lsSendQueue.size() == 0)
+	{
+		if (sendto(m_fdListen, sData.c_str(), (int)sData.size(), 0, (const sockaddr*)&ssAddr, AddrLen(ssAddr)) >= 0)
+			return true;
+		if (errno != EINTR && errno != EWOULDBLOCK && errno != EAGAIN)
+			return false;
+	}
+
+	m_lsSendQueue.push_back(std::make_pair(ssAddr, sData));
+	UpdateListenEvents();
 	return true;
 }
 
-// 绑到 IPv6 地址的 socket 同时接收 IPv4（v4-mapped）流量。
-// 必须显式设置：net.ipv6.bindv6only 可能被系统改成 1，不能依赖内核默认值。
-static bool SetIpv6OnlyDisabled(SOCKET_FD fd)
+void Server::UpdateListenEvents()
 {
-	int iV6Only = 0;
+	epoll_event event;
 
-	return (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&iV6Only, sizeof(iV6Only)) == 0);
-}
-
-static SOCKET_FD CreateReusableUdpSocket(int iFamily)
-{
-	SOCKET_FD fd = socket(iFamily, SOCK_DGRAM, 0);
-
-	if (fd == (SOCKET_FD)-1)
-		return (SOCKET_FD)-1;
-
-	if (SetReuseAddrAndPort(fd) != true)
-		goto fail;
-
-	if (iFamily == AF_INET6 && SetIpv6OnlyDisabled(fd) != true)
-		goto fail;
-
-	return fd;
-fail:
-	SOCKET_CLOSE(fd);
-	return (SOCKET_FD)-1;
-}
-
-static bool CreateSockServer(const struct sockaddr_storage &ssBind, socklen_t slBindLen, SOCKET_FD *pFd)
-{
-	bool ret = false;
-
-	*pFd = CreateReusableUdpSocket(ssBind.ss_family);
-
-	if (*pFd == (SOCKET_FD)-1)
-		goto end;
-
-	if (bind(*pFd, (struct sockaddr*)&ssBind, slBindLen) < 0)
-		goto end;
-
-	ret = true;
-end:
-	return ret;
-}
-
-// 把新来的对端从共享监听 socket 迁到它自己的 socket 上：
-// 建同样选项的 socket、bind 同一个监听地址、connect 到对端，
-// 之后内核按四元组把该对端的包送到这个更具体的 socket
-static SOCKET_FD UdpAccept(const struct sockaddr_storage &ssRemote, socklen_t slRemoteLen,
-	const struct sockaddr_storage &ssBind, socklen_t slBindLen)
-{
-	bool ret = false;
-	SOCKET_FD fd = CreateReusableUdpSocket(ssBind.ss_family);
-
-	if (fd == (SOCKET_FD)-1)
-		goto end;
-
-	if (bind(fd, (struct sockaddr*)&ssBind, slBindLen) == -1)
-		goto end;
-
-	if (connect(fd, (struct sockaddr*)&ssRemote, slRemoteLen) != 0)
-		goto end;
-
-	ret = true;
-end:
-	if (ret == false)
-	{
-		if (fd != (SOCKET_FD)-1)
-		{
-			SOCKET_CLOSE(fd);
-			fd = (SOCKET_FD)-1;
-		}
-	}
-	return fd;
+	event.data.fd = m_fdListen;
+	event.events = EPOLLIN;
+	if (m_lsSendQueue.size() > 0)
+		event.events |= EPOLLOUT;
+	epoll_ctl(m_fdEPoll, EPOLL_CTL_MOD, m_fdListen, &event);
 }
 
 Server gServer;
@@ -128,12 +136,9 @@ int main(int argc, char *argv[])
 	EPOLL_FD fdEPoll = (EPOLL_FD)-1;
 	SOCKET_FD fdListenServer = (SOCKET_FD)-1;
 	SOCKET_FD fdExitEvent = (SOCKET_FD)-1;
-	int nCnnCntLoop = 0;
+	unsigned long long llLastClean = 0;
+	unsigned long long llNow = 0;
 	ConnectionManager::ITEM_TYPE spSession;
-	WorkManager::ITEM_TYPE spDNSQureyWork;
-#ifdef WIN32
-	std::string sPreReadBuffer;
-#endif
 
 	// procd / syslog 读的是管道，行缓冲才能逐行及时送达
 	setvbuf(stdout, (char *)NULL, _IOLBF, BUFSIZ);
@@ -214,98 +219,36 @@ int main(int argc, char *argv[])
 	gFdEPollExit = fdEPoll;
 	addfd(fdEPoll, gFdExitEvent, EPOLLIN, true);
 
+	gServer.m_fdListen = fdListenServer;
+	gServer.m_fdEPoll = fdEPoll;
 	addfd(fdEPoll, fdListenServer, EPOLLIN, false);
 
 	while (1)
 	{
-		int number = epoll_wait(fdEPoll, &eePollEvent[0], MAX_EVENT_NUMBER, -1);
+		int number = epoll_wait(fdEPoll, &eePollEvent[0], MAX_EVENT_NUMBER, DEF_CLEAN_INTERVAL);
 		if ((number < 0) && (errno != EINTR))
 		{
 			SLOG_Error("EPoll failure");
 			goto end;
 		}
 
+		// 本轮只处理事件，不关任何 socket：事务答完只是记下，超时清理也放到本轮之后，
+		// 这样同一批事件里引用的对象和 fd 都还有效
 		for (int i = 0; i < number; i++)
 		{
 			SOCKET_FD fdEventSock = eePollEvent[i].data.fd;
 
 			if (fdEventSock == fdListenServer)
 			{
-				if (eePollEvent[i].events & EPOLLIN)
-				{
-					struct sockaddr_storage addrClient;
-					socklen_t sockLenClient = sizeof(addrClient);
-
-#ifdef WIN32
-					unsigned long long ulClientInfoWin32 = 0ll;
-
-					{
-						SOCKET_FD fdWin32 = (SOCKET_FD)-1;
-						int nRecvLen = 0;
-						sPreReadBuffer.resize(0x400);
-
-						if ((nRecvLen = recvfrom(fdEventSock, (char*)sPreReadBuffer.c_str(), (int)sPreReadBuffer.size(), 0, (sockaddr*)&addrClient, &sockLenClient)) < 0 && (errno != EINTR && errno != EWOULDBLOCK && errno != EAGAIN))
-							goto end;
-
-						sPreReadBuffer.resize(nRecvLen);
-
-						ulClientInfoWin32 = (((unsigned long long)addrClient.sin_port) << 32) + ntohl(addrClient.sin_addr.s_addr);
-						if (gServer.m_spWin32ConnectionManager->GetItem(ulClientInfoWin32, fdWin32) == true)
-						{
-							fdEventSock = fdWin32;
-							goto client_fd_label;
-						}
-					}
-#endif
-
-					spDNSQureyWork = WorkManager::AllocWork();
-
-#ifdef WIN32
-					if (sPreReadBuffer.size() > 0)
-					{
-						spDNSQureyWork->m_spServerConnect->SetPreReadBuff(sPreReadBuffer);
-						sPreReadBuffer.clear();
-					}
-					spDNSQureyWork->m_spServerConnect->m_ulClientInfoWin32 = ulClientInfoWin32;
-#endif
-					if (spDNSQureyWork->m_spServerConnect->PrepareRecvByRecvFrom(fdEventSock, (sockaddr*)&addrClient, &sockLenClient) != true)
-						continue;
-
-					SOCKET_FD fdConn = UdpAccept(addrClient, sockLenClient,
-						gConfig.m_ssBindAddress, gConfig.m_slBindAddressLen);
-
-					if (fdConn == (SOCKET_FD) -1)
-					{
-						SLOG_Error("errno is: %d", errno);
-						continue;
-					}
-
-					if (spDNSQureyWork->Init(fdConn, fdEPoll, addrClient) != true)
-					{
-						SLOG_Error("spDNSQureyWork Init failed!");
-						goto end;
-					}
-
-					if (gServer.m_spWorkManager->SaveWork(fdConn, spDNSQureyWork) != true)
-					{
-						SLOG_Error("spWorkManager SaveWork failed!");
-						goto end;
-					}
-
-					spDNSQureyWork->m_spServerConnect->OnRecvDataFirst();
-
-					// 垃圾清理
-					nCnnCntLoop++;
-					if (nCnnCntLoop % DEF_GARBAGE_CLEAN_HIT == 0)
-					{
-						gServer.m_spWorkManager->ClearTimeout();
-					}
-				}
-				else
+				if ((eePollEvent[i].events & (EPOLLIN | EPOLLOUT)) == 0)
 				{
 					SLOG_Error("fdListen Error!");
 					goto end;
 				}
+				if (eePollEvent[i].events & EPOLLIN)
+					gServer.OnListenRead();
+				if (eePollEvent[i].events & EPOLLOUT)
+					gServer.OnListenWrite();
 			}
 			else if (fdEventSock == fdExitEvent)
 			{
@@ -322,65 +265,26 @@ int main(int argc, char *argv[])
 				}
 			}
 #endif
-			else
+			else if (gServer.m_spConnectionManager->GetItem(fdEventSock, spSession) != true)
 			{
-#ifdef WIN32
-				client_fd_label:
-#endif
-				if (eePollEvent[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
-				{
-					if (gServer.m_spConnectionManager->GetItem(fdEventSock, spSession) != true)
-					{
-						SLOG_Error("spConnectionManagerDNS->GetItem Error failed!");
-						removefd(fdEPoll, fdEventSock);
-						SOCKET_CLOSE(fdEventSock);
-					}
-					else
-					{
-						spSession->Disconnect();
-					}
-				}
-				else if (eePollEvent[i].events & EPOLLIN)
-				{
-					if (gServer.m_spConnectionManager->GetItem(fdEventSock, spSession) != true)
-					{
-						SLOG_Debug("spConnectionManagerDNS->GetItem EPollIn failed! fd = %d", fdEventSock);
-						removefd(fdEPoll, fdEventSock);
-						SOCKET_CLOSE(fdEventSock);
-					}
-					else
-					{
-#ifdef WIN32
-						if (sPreReadBuffer.size() > 0)
-						{
-							spSession->SetPreReadBuff(sPreReadBuffer);
-							sPreReadBuffer.clear();
-						}
-#endif
-						spSession->Read();
-					}
-
-					continue;
-				}
-				else if (eePollEvent[i].events & EPOLLOUT)
-				{
-					if (gServer.m_spConnectionManager->GetItem(fdEventSock, spSession) != true)
-					{
-						SLOG_Debug("spConnectionManagerDNS->GetItem EPollOut failed! fd = %d", fdEventSock);
-						removefd(fdEPoll, fdEventSock);
-						SOCKET_CLOSE(fdEventSock);
-					}
-					else
-					{
-						spSession->Write();
-						continue;
-					}
-				}
-				else
-				{
-					SLOG_Error("Unknown EPoll!");
-				}
+				SLOG_Error("unknown fd %d in epoll", fdEventSock);
+				removefd(fdEPoll, fdEventSock);
 			}
+			else if (eePollEvent[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
+				spSession->Disconnect();
+			else if (eePollEvent[i].events & EPOLLIN)
+				spSession->Read();
+			else if (eePollEvent[i].events & EPOLLOUT)
+				spSession->Write();
+		}
+
+		gServer.m_spWorkManager->CloseIdle();
+
+		llNow = Util::GetRuntimeInMs();
+		if (llNow - llLastClean >= DEF_CLEAN_INTERVAL)
+		{
+			gServer.m_spWorkManager->ClearTimeout();
+			llLastClean = llNow;
 		}
 	}
 

@@ -12,7 +12,7 @@ void DNSQureyWork::SetInterface(InterfaceDNSQureyWork *ifInterface)
 	m_ifInterface = ifInterface;
 }
 
-bool DNSQureyWork::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_storage &addrAddrIn)
+bool DNSQureyWork::Init(const sockaddr_storage &addrClient, EPOLL_FD fdEPoll)
 {
 	bool ret = false;
 	SOCKET_FD fd = (SOCKET_FD)-1;
@@ -21,22 +21,10 @@ bool DNSQureyWork::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll, const sockaddr_stora
 	std::shared_ptr<DNSConnect> spDNSConnect;
 	std::shared_ptr<BaseConnect> spBaseConnect;
 
-	if (m_spServerConnect->Init(fdSock, fdEPoll, addrAddrIn) != true)
-		goto end;
+	m_sKey = Util::AddrToString(addrClient);
+	m_spServerConnect->Init(addrClient);
 
-	spBaseConnect = std::static_pointer_cast<BaseConnect>(m_spServerConnect);
-	if (gServer.m_spConnectionManager->SaveItem(fdSock, spBaseConnect) != true)
-		goto end;
-
-#ifdef WIN32
-	if (gServer.m_spWin32ConnectionManager->SaveItem(m_spServerConnect->m_ulClientInfoWin32, fdSock) != true)
-	{
-		SLOG_Error("spWin32ConnectionManager SaveSession failed!");
-		goto end;
-	}
-#endif
-
-	SLOG_Debug("ADD client %s fd %d", Util::AddrToString(addrAddrIn).c_str(), fdSock);
+	SLOG_Debug("ADD client %s", m_sKey.c_str());
 
 	for (iterZoneInfo = gConfig.m_vsZoneInfos.begin(), i = 0; iterZoneInfo != gConfig.m_vsZoneInfos.end(); ++iterZoneInfo, i++)
 	{
@@ -97,13 +85,7 @@ void DNSQureyWork::Exit()
 		(*iterDNSConnect)->Exit();
 	}
 
-	SLOG_Debug("DEL client %s fd %d", Util::AddrToString(m_spServerConnect->GetClientAddr()).c_str(),
-		m_spServerConnect->GetSockFd());
-	gServer.m_spConnectionManager->DeleteItem(m_spServerConnect->GetSockFd());
-#ifdef WIN32
-	gServer.m_spWin32ConnectionManager->DeleteItem(m_spServerConnect->m_ulClientInfoWin32);
-#endif
-	m_spServerConnect->Exit();
+	SLOG_Debug("DEL client %s", m_sKey.c_str());
 }
 
 void DNSQureyWork::Clear()
@@ -111,12 +93,6 @@ void DNSQureyWork::Clear()
 	m_llLastTouch = 0;
 	m_vsDNSConnects.clear();
 	m_mwDNSQureyWorkItems.clear();
-}
-
-void DNSQureyWork::ServerDisconnect()
-{
-	if (m_ifInterface)
-		m_ifInterface->DNSQureyWorkClose(m_spServerConnect->GetSockFd());
 }
 
 void DNSQureyWork::ServerNewWork(unsigned short nID, unsigned short uQType, std::string &sDNSData)
@@ -199,9 +175,6 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsig
 
 	iterDNSQureyWorkItem = m_mwDNSQureyWorkItems.find(nID);
 	if (iterDNSQureyWorkItem == m_mwDNSQureyWorkItems.end())
-		return;
-
-	if (iterDNSQureyWorkItem->second->m_bIsDone)
 		return;
 
 	uReqType = iterDNSQureyWorkItem->second->m_uQType;
@@ -295,10 +268,9 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsig
 
 		if (iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[i]->m_eState == DNSQueryResultItem::ENUM_STATE_MATCH)
 		{
-			// 可以了，通知客户，清空这个事务
-			iterDNSQureyWorkItem->second->m_bIsDone = true;
-			m_spServerConnect->m_bDisconnectTag = true;
+			// 可以了，通知客户
 			m_spServerConnect->SendDNSResultBuffer(iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[i]->m_sDNSData);
+			Finish(nID);
 			return;
 		}
 	}
@@ -310,13 +282,20 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsig
 		{
 			if (iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[i]->m_eState == DNSQueryResultItem::ENUM_STATE_NOT_MATCH)
 			{
-				m_spServerConnect->m_bDisconnectTag = true;
 				m_spServerConnect->SendDNSResultBuffer(iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[i]->m_sDNSData);
 				break;
 			}
 		}
-		iterDNSQureyWorkItem->second->m_bIsDone = true;
+		Finish(nID);
 	}
+}
+
+// 这条查询答完了（或没有可给的应答）；事务里没有待答的查询就请管理器关掉它
+void DNSQureyWork::Finish(unsigned short nID)
+{
+	m_mwDNSQureyWorkItems.erase(nID);
+	if (m_mwDNSQureyWorkItems.empty() && m_ifInterface)
+		m_ifInterface->DNSQureyWorkClose(m_sKey);
 }
 
 SOCKET_FD DNSQureyWork::ConnectToHost(ZoneInfo &ziZoneInfo)
