@@ -1,13 +1,13 @@
 #ifndef _EPOLL_UTIL_H
 #define _EPOLL_UTIL_H
 
-int setnonblocking(SOCKET_FD fd);
+int setnonblocking(int fd);
 
-void addfd(EPOLL_FD epollfd, SOCKET_FD fd, int ev, bool one_shot);
+void addfd(int epollfd, int fd, int ev, bool one_shot);
 
-void removefd(EPOLL_FD epollfd, SOCKET_FD fd);
+void removefd(int epollfd, int fd);
 
-int modfd(EPOLL_FD epollfd, SOCKET_FD fd, int ev);
+int modfd(int epollfd, int fd, int ev);
 
 
 #endif

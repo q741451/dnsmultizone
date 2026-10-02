@@ -1,13 +1,11 @@
 #include "stdafx.h"
 
-#ifndef _WIN32
-
 FileINotify::FileINotify(std::vector<std::shared_ptr<ZoneInfo>>& vsZoneInfos) : m_vsZoneInfos(vsZoneInfos)
 {
 	Reset();
 }
 
-bool FileINotify::Init(EPOLL_FD fdEPoll)
+bool FileINotify::Init(int fdEPoll)
 {
 	bool ret = false;
 	std::vector<std::shared_ptr<ZoneInfo>>::iterator iter;
@@ -92,7 +90,7 @@ end:
 	return ret;
 }
 
-void FileINotify::Exit(EPOLL_FD fdEPoll)
+void FileINotify::Exit(int fdEPoll)
 {
 	std::set<int>::iterator iter;
 
@@ -176,5 +174,3 @@ bool FileINotify::INotify()
 end:
 	return ret;
 }
-
-#endif

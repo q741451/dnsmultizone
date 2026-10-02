@@ -1,25 +1,16 @@
 #include "stdafx.h"
 
 
-#ifdef _WIN32
-int setnonblocking(SOCKET_FD fd)
-{
-	unsigned long ul = 1;
-	int r = ioctlsocket(fd, FIONBIO, &ul);
-	return r;
-}
-#else
-int setnonblocking(SOCKET_FD fd)
+int setnonblocking(int fd)
 {
 	int old_option = fcntl(fd, F_GETFL);
 	int new_option = old_option | O_NONBLOCK;
 	fcntl(fd, F_SETFL, new_option);
 	return old_option;
 }
-#endif
 
 
-void addfd(EPOLL_FD epollfd, SOCKET_FD fd, int ev, bool one_shot)
+void addfd(int epollfd, int fd, int ev, bool one_shot)
 {
 	epoll_event event;
 	event.data.fd = fd;
@@ -33,12 +24,12 @@ void addfd(EPOLL_FD epollfd, SOCKET_FD fd, int ev, bool one_shot)
 }
 
 
-void removefd(EPOLL_FD epollfd, SOCKET_FD fd)
+void removefd(int epollfd, int fd)
 {
 	epoll_ctl(epollfd, EPOLL_CTL_DEL, fd, 0);
 }
 
-int modfd(EPOLL_FD epollfd, SOCKET_FD fd, int ev)
+int modfd(int epollfd, int fd, int ev)
 {
 	epoll_event event;
 	event.data.fd = fd;

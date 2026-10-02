@@ -83,13 +83,8 @@ bool IPInfo::LoadFile()
 
 	bool ret = false;
 
-#ifdef _WIN32
-	if (fopen_s(&fpFile, m_sFileName.c_str(), "rb") != 0)
-		return false;
-#else
 	if ((fpFile = fopen(m_sFileName.c_str(), "rb")) == NULL)
 		return false;
-#endif
 
 	if (fseek(fpFile, 0, SEEK_SET) != 0)
 		goto end;

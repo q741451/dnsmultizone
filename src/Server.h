@@ -8,8 +8,8 @@ public:
 	{
 		m_spConnectionManager = std::make_shared<ConnectionManager>();
 		m_spWorkManager = std::make_shared<WorkManager>();
-		m_fdListen = (SOCKET_FD)-1;
-		m_fdEPoll = (EPOLL_FD)-1;
+		m_fdListen = -1;
+		m_fdEPoll = -1;
 	}
 
 	// 共享监听 socket：收所有客户端的查询，按来源地址交给事务；应答也从它发回
@@ -19,8 +19,8 @@ public:
 
 	std::shared_ptr<ConnectionManager> m_spConnectionManager;	// 上游 socket
 	std::shared_ptr<WorkManager> m_spWorkManager;
-	SOCKET_FD m_fdListen;
-	EPOLL_FD m_fdEPoll;
+	int m_fdListen;
+	int m_fdEPoll;
 
 private:
 	void UpdateListenEvents();

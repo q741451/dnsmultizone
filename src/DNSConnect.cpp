@@ -3,7 +3,9 @@
 DNSConnect::DNSConnect()
 {
 	m_ifInterface = NULL;
-	Clear();
+	m_fdEPoll = -1;
+	m_fdSock = -1;
+	m_nIndex = 0;
 }
 
 void DNSConnect::SetInterface(InterfaceDNSConnect *ifInterface)
@@ -11,163 +13,98 @@ void DNSConnect::SetInterface(InterfaceDNSConnect *ifInterface)
 	m_ifInterface = ifInterface;
 }
 
-bool DNSConnect::Init(SOCKET_FD fdSock, EPOLL_FD fdEPoll)
+bool DNSConnect::Init(int fdSock, int fdEPoll)
 {
-	if (BaseConnect::Init(fdSock, fdEPoll) != true)
+	m_fdSock = fdSock;
+	m_fdEPoll = fdEPoll;
+
+	if (m_fdSock == -1)
 		return false;
 
-	// 初始化时候只有读
-	m_sReadBuff.resize(DEF_CLIENT_PKG_LEN);
-	m_nReadOffset = 0;
-	addfd(m_fdEPoll, fdSock, EPOLLIN, true);
-
+	addfd(m_fdEPoll, m_fdSock, EPOLLIN, false);
 	return true;
 }
 
 void DNSConnect::Exit()
 {
-	// 程序退出
-	BaseConnect::Exit();
+	if (m_fdSock != -1)
+	{
+		removefd(m_fdEPoll, m_fdSock);
+		close(m_fdSock);
+		m_fdSock = -1;
+	}
 }
 
-void DNSConnect::Clear()
+void DNSConnect::Read()
 {
-	BaseConnect::Clear();
-	m_nIndex = 0;
-}
-
-bool DNSConnect::Read()
-{
+	std::string sDNSData;
+	std::string sName;
+	std::list<unsigned int> luIPs;
+	std::list<IPv6Addr> luIP6s;
+	unsigned short uFlag = 0;
+	unsigned short uID = 0;
+	unsigned short uQType = 0;
+	bool bIsParseOK = false;
 	int iLen = 0;
 
-	if ((iLen = recv(m_fdSock, (char*)m_sReadBuff.c_str() + m_nReadOffset, (int)m_sReadBuff.size() - m_nReadOffset, 0)) < 0 && (errno != EINTR && errno != EWOULDBLOCK && errno != EAGAIN))
-		return false;
+	sDNSData.resize(DEF_PKG_LEN);
+	if ((iLen = recv(m_fdSock, (char*)sDNSData.c_str(), sDNSData.size(), 0)) <= 0)
+		return;
+	sDNSData.resize(iLen);
 
-	if (iLen > 0)
-	{
-		m_nReadOffset += iLen;
-	}
+	bIsParseOK = Rfc1035::ParseResponseA(sDNSData, &uID, &uFlag, sName, &uQType, luIPs, luIP6s);
 
-	// 错误
-	if (m_nReadOffset > m_sReadBuff.size())
-		return false;
-
-	// 这里不继续读
-	m_sReadBuff.resize(m_nReadOffset);
-
-	// 解析
-	OnRecvData();
-
-	// 继续读
-	m_sReadBuff.resize(DEF_CLIENT_PKG_LEN);
-	m_nReadOffset = 0;
-	DoNextEPollEvent();
-
-	return true;
+	if (m_ifInterface)
+		m_ifInterface->DNSQueryResult(m_nIndex, uID, uQType, uFlag, bIsParseOK, luIPs, luIP6s, sDNSData);
 }
 
-bool DNSConnect::Write()
+void DNSConnect::Write()
 {
-	int iLen = 0;
-
-	if (m_lsWriteQueue.size() == 0 && m_nWriteOffset == m_sWriteBuff.size())
+	while (m_lsWriteQueue.size() > 0)
 	{
-		// 无任务
-		return true;
-	}
-
-	if (m_nWriteOffset == m_sWriteBuff.size() && m_lsWriteQueue.size() != 0)
-	{
-		// 没准备好就取出一个出来
-		m_sWriteBuff = *m_lsWriteQueue.begin();
+		if (send(m_fdSock, m_lsWriteQueue.front().c_str(), m_lsWriteQueue.front().size(), 0) < 0 &&
+			(errno == EINTR || errno == EWOULDBLOCK || errno == EAGAIN))
+			break;
+		// 发出去了，或者是发不出去的错误：都不再留着
 		m_lsWriteQueue.pop_front();
-		m_nWriteOffset = 0;
 	}
 
-	if ((iLen = send(m_fdSock, (char*)m_sWriteBuff.c_str() + m_nWriteOffset, (int)m_sWriteBuff.size() - m_nWriteOffset, 0)) < 0 && (errno != EINTR && errno != EWOULDBLOCK && errno != EAGAIN && errno != EINPROGRESS))
-		return false;
-
-	if (iLen > 0)
-	{
-		m_nWriteOffset += iLen;
-	}
-
-	// 错误
-	if (m_nWriteOffset > m_sWriteBuff.size())
-		return false;
-
-	// 继续发送
-	if (m_nWriteOffset < m_sWriteBuff.size())
-	{
-		if (DoNextEPollEvent() != true)
-			return false;
-		return true;
-	}
-
-	if (DoNextEPollEvent() != true) // 是否继续发
-		return false;
-
-	return true;
+	UpdateEvents();
 }
 
+// 上游报错（如 ICMP 不可达）：不再监听这个 socket，否则水平触发下错误会每轮都报
 void DNSConnect::Disconnect()
 {
+	removefd(m_fdEPoll, m_fdSock);
 	if (m_ifInterface)
 		m_ifInterface->DNSQueryDisconnect(m_nIndex);
 }
 
 bool DNSConnect::SendDNSQueryBuffer(std::string &sBuffer)
 {
-	m_lsWriteQueue.push_back(sBuffer);
-
-	if (DoNextEPollEvent() != true)
+	if (m_fdSock == -1)
 		return false;
 
+	if (m_lsWriteQueue.size() == 0)
+	{
+		if (send(m_fdSock, sBuffer.c_str(), sBuffer.size(), 0) >= 0)
+			return true;
+		if (errno != EINTR && errno != EWOULDBLOCK && errno != EAGAIN)
+			return false;
+	}
+
+	m_lsWriteQueue.push_back(sBuffer);
+	UpdateEvents();
 	return true;
 }
 
-bool DNSConnect::DoNextEPollEvent()
+void DNSConnect::UpdateEvents()
 {
-	bool ret = false;
+	epoll_event event;
 
-	if (m_nWriteOffset > m_sWriteBuff.size())
-		goto end;
-
-	if (m_sWriteBuff.size() != m_nWriteOffset || m_lsWriteQueue.size() != 0)
-	{
-		if (modfd(m_fdEPoll, m_fdSock, EPOLLIN | EPOLLOUT) != 0)
-			goto end;
-	}
-	else
-	{
-		if (modfd(m_fdEPoll, m_fdSock, EPOLLIN) != 0)
-			goto end;
-	}
-
-	ret = true;
-end:
-	return ret;
+	event.data.fd = m_fdSock;
+	event.events = EPOLLIN | EPOLLRDHUP;
+	if (m_lsWriteQueue.size() > 0)
+		event.events |= EPOLLOUT;
+	epoll_ctl(m_fdEPoll, EPOLL_CTL_MOD, m_fdSock, &event);
 }
-
-void DNSConnect::OnRecvData()
-{
-	unsigned short uFlag = 0;
-	std::string sName;
-	std::string sDNSData;
-	unsigned short uID = 0;
-	unsigned short uQType = 0;
-	std::list<unsigned int> luIPs;
-	std::list<IPv6Addr> luIP6s;
-	bool bIsParseOK = false;
-
-	sDNSData = m_sReadBuff;
-
-	if (Rfc1035::ParseResponseA(sDNSData, &uID, &uFlag, sName, &uQType, luIPs, luIP6s) != true)
-		goto end;
-
-	bIsParseOK = true;
-end:
-	if (m_ifInterface)
-		m_ifInterface->DNSQueryResult(m_nIndex, uID, uQType, uFlag, bIsParseOK, luIPs, luIP6s, sDNSData);
-}
-

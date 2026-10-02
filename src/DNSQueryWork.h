@@ -15,7 +15,7 @@ public:
 
 public:
 	void SetInterface(InterfaceDNSQureyWork *ifInterface);
-	bool Init(const sockaddr_storage &addrClient, EPOLL_FD fdEPoll);
+	bool Init(const sockaddr_storage &addrClient, int fdEPoll);
 	void Exit();
 	void Clear();
 
@@ -38,7 +38,7 @@ private:
 	std::string								m_sKey;
 	std::map<unsigned short, std::shared_ptr<DNSQureyWorkItem>>	m_mwDNSQureyWorkItems;
 
-	SOCKET_FD ConnectToHost(ZoneInfo &ziZoneInfo);
+	int ConnectToHost(ZoneInfo &ziZoneInfo);
 	void Finish(unsigned short nID);
 };
 

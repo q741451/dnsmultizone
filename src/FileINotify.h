@@ -9,8 +9,8 @@ class FileINotify
 public:
 	FileINotify(std::vector<std::shared_ptr<ZoneInfo>>& vsZoneInfos);
 
-	bool Init(EPOLL_FD fdEPoll);
-	void Exit(EPOLL_FD fdEPoll);
+	bool Init(int fdEPoll);
+	void Exit(int fdEPoll);
 	void Reset();
 
 	bool CheckInNotify(int iFd);

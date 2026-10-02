@@ -5,35 +5,23 @@
 #define DEF_CLIENT_PKG_LEN 0x400
 #define DEF_READ_PER_EVENT 64		// 监听 socket 一次事件最多读几个包，余下的下一轮再读
 
-#ifdef _WIN32
-static bool NetInit()
-{
-	WSADATA wsaData;
-	WORD wVersionRequired = MAKEWORD(1, 1);
-	if (WSAStartup(wVersionRequired, &wsaData) != 0)
-		return false;
-
-	return true;
-}
-#endif
-
-SOCKET_FD gFdExitEvent = (SOCKET_FD)-1;
-EPOLL_FD gFdEPollExit = (EPOLL_FD)-1;
+int gFdExitEvent = -1;
+int gFdEPollExit = -1;
 
 static void SigEventInt(int sig)
 {
-	if(gFdEPollExit != (EPOLL_FD)-1 && gFdExitEvent != (SOCKET_FD)-1)
+	if(gFdEPollExit != -1 && gFdExitEvent != -1)
 		modfd(gFdEPollExit, gFdExitEvent, EPOLLOUT);
 }
 
 // 监听 socket：SO_REUSEADDR 允许别的实例绑定同一端口（包只交给其中一个）。绑到 IPv6 地址时
 // 关掉 V6ONLY 走双栈，必须显式设置：net.ipv6.bindv6only 可能被系统改成 1，不能依赖内核默认值
-static bool CreateSockServer(const struct sockaddr_storage &ssBind, socklen_t slBindLen, SOCKET_FD *pFd)
+static bool CreateSockServer(const struct sockaddr_storage &ssBind, socklen_t slBindLen, int *pFd)
 {
 	int iReuse = 1;
 	int iV6Only = 0;
 
-	if ((*pFd = socket(ssBind.ss_family, SOCK_DGRAM, 0)) == (SOCKET_FD)-1)
+	if ((*pFd = socket(ssBind.ss_family, SOCK_DGRAM, 0)) == -1)
 		return false;
 
 	if (setsockopt(*pFd, SOL_SOCKET, SO_REUSEADDR, (char*)&iReuse, sizeof(iReuse)) != 0)
@@ -133,9 +121,9 @@ int main(int argc, char *argv[])
 	int ret = -1;
 	std::vector<epoll_event> eePollEvent(MAX_EVENT_NUMBER);
 	std::shared_ptr<FileINotify> spFileINotify;
-	EPOLL_FD fdEPoll = (EPOLL_FD)-1;
-	SOCKET_FD fdListenServer = (SOCKET_FD)-1;
-	SOCKET_FD fdExitEvent = (SOCKET_FD)-1;
+	int fdEPoll = -1;
+	int fdListenServer = -1;
+	int fdExitEvent = -1;
 	unsigned long long llLastClean = 0;
 	unsigned long long llNow = 0;
 	ConnectionManager::ITEM_TYPE spSession;
@@ -155,17 +143,9 @@ int main(int argc, char *argv[])
 		goto end;
 	}
 
-#ifdef _WIN32
-	if (NetInit() != true)
-	{
-		SLOG_Error("NetInit Fail");
-		goto end;
-	}
-#endif
-
 	signal(SIGINT, SigEventInt);	 /* Ctrl+C */
 
-	if ((fdEPoll = epoll_create(5)) == (EPOLL_FD)-1)
+	if ((fdEPoll = epoll_create(5)) == -1)
 	{
 		SLOG_Error("epoll_create error");
 		goto end;
@@ -184,7 +164,6 @@ int main(int argc, char *argv[])
 	}
 
 	// 进入后台模式
-#ifndef _WIN32
 	if (gConfig.m_bIsBackMode)
 	{
 		SLOG_Info("Enter background mode running");
@@ -197,11 +176,8 @@ int main(int argc, char *argv[])
 			SLog::SetTimestamp(true);
 		}
 	}
-#endif
 
 	gConfig.RefreshResolvConf();
-
-#ifndef _WIN32
 
 	spFileINotify = std::make_shared<FileINotify>(gConfig.m_vsZoneInfos);
 
@@ -210,8 +186,6 @@ int main(int argc, char *argv[])
 		SLOG_Error("FileINotify Init error!");
 		goto end;
 	}
-
-#endif
 
 	SLOG_Info("Server start, listen %s", Util::AddrToString(gConfig.m_ssBindAddress).c_str());
 
@@ -236,7 +210,7 @@ int main(int argc, char *argv[])
 		// 这样同一批事件里引用的对象和 fd 都还有效
 		for (int i = 0; i < number; i++)
 		{
-			SOCKET_FD fdEventSock = eePollEvent[i].data.fd;
+			int fdEventSock = eePollEvent[i].data.fd;
 
 			if (fdEventSock == fdListenServer)
 			{
@@ -255,7 +229,6 @@ int main(int argc, char *argv[])
 				SLOG_Info("fdExitEvent active");
 				goto end;
 			}
-#ifndef WIN32
 			else if (spFileINotify->CheckInNotify(fdEventSock))
 			{
 				if (spFileINotify->INotify() != true)
@@ -264,7 +237,6 @@ int main(int argc, char *argv[])
 					goto end;
 				}
 			}
-#endif
 			else if (gServer.m_spConnectionManager->GetItem(fdEventSock, spSession) != true)
 			{
 				SLOG_Error("unknown fd %d in epoll", fdEventSock);
@@ -293,22 +265,20 @@ end:
 	// 清空Session资源
 	gServer.m_spWorkManager->ExitAndClear();
 
-	if (fdListenServer != (SOCKET_FD)-1)
-		SOCKET_CLOSE(fdListenServer);
+	if (fdListenServer != -1)
+		close(fdListenServer);
 
-	if (fdExitEvent != (SOCKET_FD)-1)
-		SOCKET_CLOSE(fdExitEvent);
+	if (fdExitEvent != -1)
+		close(fdExitEvent);
 
-#ifndef WIN32
-	if (spFileINotify && fdEPoll != (EPOLL_FD)-1)
+	if (spFileINotify && fdEPoll != -1)
 	{
 		spFileINotify->Exit(fdEPoll);
 		spFileINotify->Reset();
 	}
-#endif
 
-	if (fdEPoll != (EPOLL_FD)-1)
-		EPOLL_CLOSE(fdEPoll);
+	if (fdEPoll != -1)
+		close(fdEPoll);
 
 	return ret;
 }

@@ -30,14 +30,6 @@ public:
 		itItem = iterForMap->second;
 		return true;
 	}
-	bool GetFirstItem(ITEM_TYPE &itItem)
-	{
-		if (m_mssKeyValuePairs.begin() == m_mssKeyValuePairs.end())
-			return false;
-
-		itItem = m_mssKeyValuePairs.begin()->second;
-		return true;
-	}
 	bool DeleteItem(KeyType kyKey)
 	{
 		typename std::map<KeyType, ValueType>::iterator iterForMap;

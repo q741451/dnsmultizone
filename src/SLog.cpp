@@ -62,11 +62,7 @@ bool SLog::LogLog(FILE* fOut, const char* cTitile, const char* format, va_list p
 
 	if (s_bTimestamp)
 	{
-#ifdef _WIN32
-		localtime_s(&now_time, &time_seconds);
-#else
 		localtime_r(&time_seconds, &now_time);
-#endif
 		snprintf(cHead, sizeof(cHead), "%02u%02u%02u%02u%02u ", now_time.tm_mon + 1, now_time.tm_mday,
 			now_time.tm_hour, now_time.tm_min, now_time.tm_sec);
 	}

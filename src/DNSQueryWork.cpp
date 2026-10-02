@@ -12,14 +12,13 @@ void DNSQureyWork::SetInterface(InterfaceDNSQureyWork *ifInterface)
 	m_ifInterface = ifInterface;
 }
 
-bool DNSQureyWork::Init(const sockaddr_storage &addrClient, EPOLL_FD fdEPoll)
+bool DNSQureyWork::Init(const sockaddr_storage &addrClient, int fdEPoll)
 {
 	bool ret = false;
-	SOCKET_FD fd = (SOCKET_FD)-1;
+	int fd = -1;
 	int i = 0;
 	std::vector<std::shared_ptr<ZoneInfo>>::iterator iterZoneInfo;
 	std::shared_ptr<DNSConnect> spDNSConnect;
-	std::shared_ptr<BaseConnect> spBaseConnect;
 
 	m_sKey = Util::AddrToString(addrClient);
 	m_spServerConnect->Init(addrClient);
@@ -29,7 +28,7 @@ bool DNSQureyWork::Init(const sockaddr_storage &addrClient, EPOLL_FD fdEPoll)
 	for (iterZoneInfo = gConfig.m_vsZoneInfos.begin(), i = 0; iterZoneInfo != gConfig.m_vsZoneInfos.end(); ++iterZoneInfo, i++)
 	{
 		spDNSConnect = std::make_shared<DNSConnect>();
-		if ((*iterZoneInfo)->m_bIsDNSAddrOK == false || (fd = ConnectToHost(*(*iterZoneInfo))) == (SOCKET_FD)-1)
+		if ((*iterZoneInfo)->m_bIsDNSAddrOK == false || (fd = ConnectToHost(*(*iterZoneInfo))) == -1)
 		{
 			// 挂了让他挂
 			spDNSConnect->Init(-1, fdEPoll);
@@ -42,10 +41,8 @@ bool DNSQureyWork::Init(const sockaddr_storage &addrClient, EPOLL_FD fdEPoll)
 		}
 		else
 		{
-			if (spDNSConnect->Init(fd, fdEPoll) != true)
-				goto end;
-			spBaseConnect = std::static_pointer_cast<BaseConnect>(spDNSConnect);
-			if (gServer.m_spConnectionManager->SaveItem(fd, spBaseConnect) != true)
+			spDNSConnect->Init(fd, fdEPoll);
+			if (gServer.m_spConnectionManager->SaveItem(fd, spDNSConnect) != true)
 				goto end;
 			if ((*iterZoneInfo)->m_bIsUpstreamDown)
 			{
@@ -72,7 +69,7 @@ void DNSQureyWork::Exit()
 
 	for (iterDNSConnect = m_vsDNSConnects.begin(); iterDNSConnect != m_vsDNSConnects.end(); ++iterDNSConnect)
 	{
-		if ((*iterDNSConnect)->GetSockFd() != (SOCKET_FD)-1)
+		if ((*iterDNSConnect)->GetSockFd() != -1)
 		{
 			SLOG_Debug("DEL child fd %d zone %s", (*iterDNSConnect)->GetSockFd(),
 				gConfig.m_vsZoneInfos[(*iterDNSConnect)->m_nIndex]->m_sName.c_str());
@@ -298,15 +295,15 @@ void DNSQureyWork::Finish(unsigned short nID)
 		m_ifInterface->DNSQureyWorkClose(m_sKey);
 }
 
-SOCKET_FD DNSQureyWork::ConnectToHost(ZoneInfo &ziZoneInfo)
+int DNSQureyWork::ConnectToHost(ZoneInfo &ziZoneInfo)
 {
 	bool ret = false;
-	SOCKET_FD fd = (SOCKET_FD) -1;
+	int fd = -1;
 
 	// 上游是什么族就建什么族的 socket
 	fd = socket(ziZoneInfo.m_ssDNSAddr.ss_family, SOCK_DGRAM, 0);
 
-	if (fd == (SOCKET_FD)-1)
+	if (fd == -1)
 		goto end;
 
 	if (connect(fd, (struct sockaddr*)&ziZoneInfo.m_ssDNSAddr, ziZoneInfo.GetDNSAddrLen()) != 0)
@@ -316,10 +313,10 @@ SOCKET_FD DNSQureyWork::ConnectToHost(ZoneInfo &ziZoneInfo)
 end:
 	if (ret == false)
 	{
-		if (fd != (SOCKET_FD)-1)
+		if (fd != -1)
 		{
-			SOCKET_CLOSE(fd);
-			fd = (SOCKET_FD)-1;
+			close(fd);
+			fd = -1;
 		}
 	}
 	return fd;
