@@ -47,9 +47,7 @@ See [`config/DNSMZConfig.json.example`](config/DNSMZConfig.json.example). Field 
   - `dnsIP` / `dnsPort`: the upstream DNS used by this zone, IPv4 or IPv6 (or use `resolvFile` to point at a `resolv.conf`-style file that is auto-watched for changes)
   - `ipList`: list of IP-range rule files that must match for this zone to hit; `inverseIPList` inverts the match, `deny` rejects on match. IPv4 and IPv6 entries may be mixed in one file, and a file with no entry of a given family has no say about that family
   - `denyNXDomain`: optional, default `false`. Set it only for an upstream that blocks domains by answering `NXDOMAIN`, so that answer falls through to the next zone instead of being returned as-is
-  - `dropAddr`: optional, `["ipv4"]` and/or `["ipv6"]`. When this zone's answer wins, addresses of that family are taken out: an A / AAAA answer comes back empty, SVCB / HTTPS keep everything but `ipv4hint` / `ipv6hint` (ALPN stays, so HTTP/3 is still offered) and lose the authority and additional sections. For a zone whose exit lacks that family
-  - `emptyTypes`: optional, query type numbers (e.g. A `1`, AAAA `28`, HTTPS `65`). When this zone's answer wins, the answer to a listed type comes back empty (header and question only)
-  - Both only edit the upstream answer (ID, flags and RCODE kept); an answer that cannot be parsed is not returned
+  - `dropIPv4` / `dropIPv6`: optional, default `false`, for a zone whose exit lacks that family. When this zone's answer wins: A / AAAA answers come back empty, SVCB / HTTPS lose only `ipv4hint` / `ipv6hint` (ALPN stays)
 
 ### Cross-compiling / static multi-arch binaries
 
@@ -147,9 +145,7 @@ make
   - `dnsIP` / `dnsPort`：该 Zone 使用的上游 DNS，IPv4 或 IPv6 均可（也可用 `resolvFile` 指向一个 `resolv.conf` 风格文件，自动监听变化）
   - `ipList`：命中该 Zone 需要满足的 IP 段规则文件列表，`inverseIPList` 表示反选，`deny` 表示命中即拒绝。同一文件内可混放 IPv4 与 IPv6 条目，不含某一族条目的文件对该族地址不作判定
   - `denyNXDomain`：可选，默认 `false`。仅在上游用 `NXDOMAIN` 屏蔽域名时开启，使该应答顺延到下一个 Zone，而不是如实返回
-  - `dropAddr`：可选，`["ipv4"]` 和/或 `["ipv6"]`。本 Zone 的应答胜出时去掉该族地址：A / AAAA 的应答清空，SVCB / HTTPS 只去掉 `ipv4hint` / `ipv6hint`（ALPN 保留，仍可直接用 HTTP/3），并去掉授权、附加两部分。用于出口缺这一族的 Zone
-  - `emptyTypes`：可选，查询类型编号（如 A `1`、AAAA `28`、HTTPS `65`）。本 Zone 的应答胜出时，列出类型的应答清空（只留报文头和问题）
-  - 两者都只改上游的应答（ID、标志位、RCODE 不变）；解析不了的应答不返回
+  - `dropIPv4` / `dropIPv6`：可选，默认 `false`，用于出口缺这一族的 Zone。本 Zone 的应答胜出时：A / AAAA 应答清空，SVCB / HTTPS 只去掉 `ipv4hint` / `ipv6hint`（ALPN 保留）
 
 ### 交叉编译 / 多架构静态可执行文件
 

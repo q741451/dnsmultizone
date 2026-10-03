@@ -287,22 +287,21 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsig
 	}
 }
 
-// 胜出的应答发给客户端，按该 zone 的 emptyTypes / dropAddr 改过再发；改不了就不发
+// 胜出的应答发给客户端，按该 zone 的 dropIPv4 / dropIPv6 改过再发；改不了就不发
 void DNSQureyWork::SendResult(unsigned int nIndex, unsigned short uQType, std::string &sDNSData)
 {
-	bool bEmpty = gConfig.IsEmptyType(nIndex, uQType);
 	bool bDropIPv4 = gConfig.IsDropIPv4(nIndex);
 	bool bDropIPv6 = gConfig.IsDropIPv6(nIndex);
 	std::string sOut;
 
-	if (!bEmpty && !bDropIPv4 && !bDropIPv6)
+	if (!bDropIPv4 && !bDropIPv6)
 	{
 		m_spServerConnect->SendDNSResultBuffer(sDNSData);
 		return;
 	}
 
 	sOut = sDNSData;
-	if (bEmpty ? Rfc1035::EmptyResponse(sOut) : Rfc1035::DropAddress(sOut, uQType, bDropIPv4, bDropIPv6))
+	if (Rfc1035::DropAddress(sOut, uQType, bDropIPv4, bDropIPv6))
 		m_spServerConnect->SendDNSResultBuffer(sOut);
 }
 

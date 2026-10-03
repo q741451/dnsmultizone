@@ -14,7 +14,6 @@ public:
 	EnumIPMatch CheckIsMatch(unsigned int nIndex, unsigned int nIP);
 	EnumIPMatch CheckIsMatch(unsigned int nIndex, const unsigned char *cIP);
 	bool IsDenyNXDomain(unsigned int nIndex);
-	bool IsEmptyType(unsigned int nIndex, unsigned short uQType);
 	bool IsDropIPv4(unsigned int nIndex);
 	bool IsDropIPv6(unsigned int nIndex);
 
