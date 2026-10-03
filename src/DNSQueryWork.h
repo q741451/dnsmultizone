@@ -40,6 +40,7 @@ private:
 
 	int ConnectToHost(ZoneInfo &ziZoneInfo);
 	void Finish(unsigned short nID);
+	void SendResult(unsigned int nIndex, unsigned short uQType, std::string &sDNSData);
 };
 
 

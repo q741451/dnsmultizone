@@ -27,8 +27,15 @@ public:
 	static bool ParseResponseA(std::string &sBuffer, unsigned short *uID, unsigned short *uFlag, std::string &sName, unsigned short *uQType,
 		std::list<unsigned int> &luIPs, std::list<IPv6Addr> &luIP6s);
 
+	// 应答只改不造：ID、标志位、RCODE 不变。返回 false 表示报文解析不了
+	// 只留报文头和问题
+	static bool EmptyResponse(std::string &sBuffer);
+	// 去掉某族地址：A / AAAA 同 EmptyResponse；SVCB / HTTPS 只删 ipv4hint / ipv6hint
+	static bool DropAddress(std::string &sBuffer, unsigned short uQType, bool bDropIPv4, bool bDropIPv6);
+
 private:
 	static bool ParseRequestAAndAnswers(AutoBuffer &aBuffer, unsigned short *uID, unsigned short *uFlag, unsigned short *uAnswers, std::string &sName, unsigned short *uQType);
+	static bool QuestionEnd(std::string &sBuffer, size_t *pEnd, unsigned short *uAnswers);
 	static bool GetBufferName(AutoBuffer &aBuffer, std::string &sName);
 	static bool SkipBufferName(AutoBuffer &aBuffer);
 	static bool ParseSvcParamHint(std::string &sData, std::list<unsigned int> &luIPs, std::list<IPv6Addr> &luIP6s);

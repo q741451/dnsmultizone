@@ -266,7 +266,7 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsig
 		if (iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[i]->m_eState == DNSQueryResultItem::ENUM_STATE_MATCH)
 		{
 			// 可以了，通知客户
-			m_spServerConnect->SendDNSResultBuffer(iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[i]->m_sDNSData);
+			SendResult(i, uReqType, iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[i]->m_sDNSData);
 			Finish(nID);
 			return;
 		}
@@ -279,12 +279,31 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsig
 		{
 			if (iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[i]->m_eState == DNSQueryResultItem::ENUM_STATE_NOT_MATCH)
 			{
-				m_spServerConnect->SendDNSResultBuffer(iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[i]->m_sDNSData);
+				SendResult(i, uReqType, iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[i]->m_sDNSData);
 				break;
 			}
 		}
 		Finish(nID);
 	}
+}
+
+// 胜出的应答发给客户端，按该 zone 的 emptyTypes / dropAddr 改过再发；改不了就不发
+void DNSQureyWork::SendResult(unsigned int nIndex, unsigned short uQType, std::string &sDNSData)
+{
+	bool bEmpty = gConfig.IsEmptyType(nIndex, uQType);
+	bool bDropIPv4 = gConfig.IsDropIPv4(nIndex);
+	bool bDropIPv6 = gConfig.IsDropIPv6(nIndex);
+	std::string sOut;
+
+	if (!bEmpty && !bDropIPv4 && !bDropIPv6)
+	{
+		m_spServerConnect->SendDNSResultBuffer(sDNSData);
+		return;
+	}
+
+	sOut = sDNSData;
+	if (bEmpty ? Rfc1035::EmptyResponse(sOut) : Rfc1035::DropAddress(sOut, uQType, bDropIPv4, bDropIPv6))
+		m_spServerConnect->SendDNSResultBuffer(sOut);
 }
 
 // 这条查询答完了（或没有可给的应答）；事务里没有待答的查询就请管理器关掉它

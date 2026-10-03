@@ -147,6 +147,10 @@ bool Config::LoadConfigJson()
 		cJSON *cjDNSIP = cJSON_GetObjectItemCaseSensitive(cjZone, "dnsIP");
 		cJSON *cjDNSPort = cJSON_GetObjectItemCaseSensitive(cjZone, "dnsPort");
 		cJSON *cjDenyNX = cJSON_GetObjectItemCaseSensitive(cjZone, "denyNXDomain");
+		cJSON *cjEmptyTypes = cJSON_GetObjectItemCaseSensitive(cjZone, "emptyTypes");
+		cJSON *cjType = NULL;
+		cJSON *cjDropAddr = cJSON_GetObjectItemCaseSensitive(cjZone, "dropAddr");
+		cJSON *cjFamily = NULL;
 		cJSON *cjIPs = cJSON_GetObjectItemCaseSensitive(cjZone, "ipList");
 		cJSON *cjIP = NULL;
 
@@ -187,6 +191,29 @@ bool Config::LoadConfigJson()
 		// 可选项，缺省为 false
 		if (cJSON_IsBool(cjDenyNX))
 			spZoneInfo->m_bIsDenyNXDomain = cJSON_IsTrue(cjDenyNX) ? true : false;
+
+		// 可选项：查询类型编号，不认识也不检查其含义
+		if (cjEmptyTypes != NULL && !cJSON_IsArray(cjEmptyTypes))
+			goto end;
+		cJSON_ArrayForEach(cjType, cjEmptyTypes)
+		{
+			if (!cJSON_IsNumber(cjType) || cjType->valueint < 0 || cjType->valueint > 0xFFFF)
+				goto end;
+			spZoneInfo->m_suEmptyTypes.insert((unsigned short)cjType->valueint);
+		}
+
+		// 可选项："ipv4" / "ipv6"
+		if (cjDropAddr != NULL && !cJSON_IsArray(cjDropAddr))
+			goto end;
+		cJSON_ArrayForEach(cjFamily, cjDropAddr)
+		{
+			if (cJSON_IsString(cjFamily) && strcmp(cjFamily->valuestring, "ipv4") == 0)
+				spZoneInfo->m_bIsDropIPv4 = true;
+			else if (cJSON_IsString(cjFamily) && strcmp(cjFamily->valuestring, "ipv6") == 0)
+				spZoneInfo->m_bIsDropIPv6 = true;
+			else
+				goto end;
+		}
 		
 		cJSON_ArrayForEach(cjIP, cjIPs)
 		{
@@ -243,6 +270,21 @@ EnumIPMatch Config::CheckIsMatch(unsigned int nIndex, const unsigned char *cIP)
 bool Config::IsDenyNXDomain(unsigned int nIndex)
 {
 	return m_vsZoneInfos[nIndex]->m_bIsDenyNXDomain;
+}
+
+bool Config::IsEmptyType(unsigned int nIndex, unsigned short uQType)
+{
+	return m_vsZoneInfos[nIndex]->m_suEmptyTypes.count(uQType) > 0;
+}
+
+bool Config::IsDropIPv4(unsigned int nIndex)
+{
+	return m_vsZoneInfos[nIndex]->m_bIsDropIPv4;
+}
+
+bool Config::IsDropIPv6(unsigned int nIndex)
+{
+	return m_vsZoneInfos[nIndex]->m_bIsDropIPv6;
 }
 
 void Config::RefreshResolvConf()

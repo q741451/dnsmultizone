@@ -162,6 +162,175 @@ end:
 	return ret;
 }
 
+static unsigned short ReadU16(const std::string &sBuffer, size_t p)
+{
+	return (unsigned short)(((unsigned char)sBuffer[p] << 8) | (unsigned char)sBuffer[p + 1]);
+}
+
+static void WriteU16(std::string &sBuffer, size_t p, unsigned short n)
+{
+	sBuffer[p] = (char)(n >> 8);
+	sBuffer[p + 1] = (char)(n & 0xFF);
+}
+
+// 拷贝一个名字；压缩指针按 vRemoved（原偏移, 删掉的字节数）换算成新偏移，
+// 指针只往前指，所以被删字节之前的位置不变
+static bool CopyName(const std::string &sIn, size_t &p, std::string &sOut, const std::vector<std::pair<size_t, size_t>> &vRemoved)
+{
+	size_t i = 0;
+	size_t t = 0;
+	size_t d = 0;
+
+	while (p < sIn.size())
+	{
+		unsigned char c = (unsigned char)sIn[p];
+
+		if (c == 0)
+		{
+			sOut += sIn[p++];
+			return true;
+		}
+		if ((c & 0xC0) == 0xC0)
+		{
+			if (p + 1 >= sIn.size())
+				return false;
+			t = ReadU16(sIn, p) & 0x3FFF;
+			for (i = 0; i < vRemoved.size(); i++)
+				if (vRemoved[i].first < t)
+					d += vRemoved[i].second;
+			t -= d;
+			sOut += (char)(0xC0 | (t >> 8));
+			sOut += (char)(t & 0xFF);
+			p += 2;
+			return true;
+		}
+		if ((c & 0xC0) != 0 || p + 1 + c > sIn.size())
+			return false;
+		sOut.append(sIn, p, 1 + c);
+		p += 1 + c;
+	}
+	return false;
+}
+
+// 问题之后的偏移和回答记录数
+bool Rfc1035::QuestionEnd(std::string &sBuffer, size_t *pEnd, unsigned short *uAnswers)
+{
+	unsigned short uID = 0;
+	unsigned short uFlag = 0;
+	unsigned short uQType = 0;
+	std::string sName;
+	AutoBuffer aBuffer;
+
+	aBuffer.Assign((char*)sBuffer.c_str(), sBuffer.size());
+	if (ParseRequestAAndAnswers(aBuffer, &uID, &uFlag, uAnswers, sName, &uQType) != true)
+		return false;
+	*pEnd = aBuffer.m_szOffset;
+	return true;
+}
+
+// 只留回答部分的前 nAnswers 条；授权、附加两部分去掉
+static void SetCounts(std::string &sBuffer, unsigned short nAnswers)
+{
+	WriteU16(sBuffer, 6, nAnswers);
+	WriteU16(sBuffer, 8, 0);
+	WriteU16(sBuffer, 10, 0);
+}
+
+bool Rfc1035::EmptyResponse(std::string &sBuffer)
+{
+	unsigned short uAnswers = 0;
+	size_t p = 0;
+
+	if (QuestionEnd(sBuffer, &p, &uAnswers) != true)
+		return false;
+	sBuffer.resize(p);
+	SetCounts(sBuffer, 0);
+	return true;
+}
+
+bool Rfc1035::DropAddress(std::string &sBuffer, unsigned short uQType, bool bDropIPv4, bool bDropIPv6)
+{
+	std::vector<std::pair<size_t, size_t>> vRemoved;
+	std::string sOut;
+	std::string sName;
+	unsigned short uAnswers = 0;
+	unsigned short uType = 0;
+	unsigned short uKey = 0;
+	unsigned short i = 0;
+	size_t p = 0;
+	size_t q = 0;
+	size_t end = 0;
+	size_t lenpos = 0;
+	size_t vlen = 0;
+
+	if (uQType == DEF_TYPE_A)
+		return bDropIPv4 ? EmptyResponse(sBuffer) : true;
+	if (uQType == DEF_TYPE_AAAA)
+		return bDropIPv6 ? EmptyResponse(sBuffer) : true;
+	if (uQType != DEF_TYPE_SVCB && uQType != DEF_TYPE_HTTPS)
+		return true;
+
+	if (QuestionEnd(sBuffer, &p, &uAnswers) != true)
+		return false;
+	sOut.assign(sBuffer, 0, p);
+
+	for (i = 0; i < uAnswers; i++)
+	{
+		q = p;
+		sName.clear();
+		if (CopyName(sBuffer, q, sName, vRemoved) != true || q + 10 > sBuffer.size())
+			return false;
+		uType = ReadU16(sBuffer, q);
+		// 删过字节后，别的类型内部的名字没法不认类型地改指针，到此为止
+		if (uType != uQType && vRemoved.size() > 0)
+			break;
+
+		CopyName(sBuffer, p, sOut, vRemoved);
+		end = p + 10 + ReadU16(sBuffer, p + 8);
+		if (end > sBuffer.size())
+			return false;
+		sOut.append(sBuffer, p, 8);			// TYPE CLASS TTL
+		lenpos = sOut.size();
+		sOut.append(2, 0);
+		p += 10;
+
+		if (uType != uQType)
+			sOut.append(sBuffer, p, end - p);
+		else
+		{
+			// SvcPriority、TargetName，然后是一串 key / length / value
+			if (p + 2 > end)
+				return false;
+			sOut.append(sBuffer, p, 2);
+			p += 2;
+			if (CopyName(sBuffer, p, sOut, vRemoved) != true || p > end)
+				return false;
+			while (p < end)
+			{
+				if (p + 4 > end)
+					return false;
+				uKey = ReadU16(sBuffer, p);
+				vlen = 4 + ReadU16(sBuffer, p + 2);
+				if (p + vlen > end)
+					return false;
+				if ((uKey == DEF_SVCPARAM_IPV4HINT && bDropIPv4) || (uKey == DEF_SVCPARAM_IPV6HINT && bDropIPv6))
+					vRemoved.push_back(std::make_pair(p, vlen));
+				else
+					sOut.append(sBuffer, p, vlen);
+				p += vlen;
+			}
+		}
+
+		WriteU16(sOut, lenpos, (unsigned short)(sOut.size() - lenpos - 2));
+		p = end;
+	}
+
+	// 附加部分常带目标的 A / AAAA，一并去掉
+	SetCounts(sOut, i);
+	sBuffer = sOut;
+	return true;
+}
+
 bool Rfc1035::ParseRequestAAndAnswers(AutoBuffer &aBuffer, unsigned short *uID, unsigned short *uFlag, unsigned short *uAnswers, std::string &sName, unsigned short *uQType)
 {
 	bool ret = false;
