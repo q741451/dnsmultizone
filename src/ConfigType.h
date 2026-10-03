@@ -121,7 +121,7 @@ public:
 	// 这个上游是否用 NXDOMAIN 屏蔽域名。默认 false，即把 NXDOMAIN 当作
 	// 正常的"名字不存在"，按优先级取用；置 true 才视为否定并让位
 	bool m_bIsDenyNXDomain;
-	// 本 zone 胜出时：这些查询类型的应答去掉该类记录；去掉这些族的地址
+	// 本 zone 胜出时：这些查询类型的应答清空；应答里去掉这些族的地址
 	std::set<unsigned short> m_suEmptyTypes;
 	bool m_bIsDropIPv4;
 	bool m_bIsDropIPv6;
