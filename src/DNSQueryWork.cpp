@@ -7,6 +7,16 @@ DNSQureyWork::DNSQureyWork()
 	Clear();
 }
 
+// A / AAAA 只问有这一族 ipList 的 zone；其余类型所有 zone 都参与
+static bool ZoneTakesPart(const ZoneInfo &ziZoneInfo, unsigned short uQType)
+{
+	if (uQType == Rfc1035::DEF_TYPE_A)
+		return ziZoneInfo.m_bHasV4;
+	if (uQType == Rfc1035::DEF_TYPE_AAAA)
+		return ziZoneInfo.m_bHasV6;
+	return true;
+}
+
 void DNSQureyWork::SetInterface(InterfaceDNSQureyWork *ifInterface)
 {
 	m_ifInterface = ifInterface;
@@ -128,15 +138,18 @@ void DNSQureyWork::ServerNewWork(unsigned short nID, unsigned short uQType, std:
 	}
 	else
 	{
-		// 创建一套，全部发一遍
+		// 创建一套，发给参与的 zone；不参与的直接不匹配。第一个 zone 总要问，
+		// 都不匹配时给它的应答
 		spDNSQureyWorkItem = std::make_shared<DNSQureyWorkItem>();
 		spDNSQureyWorkItem->m_nID = nID;
 		spDNSQureyWorkItem->m_uQType = uQType;
-		for (iterDNSConnect = m_vsDNSConnects.begin(); iterDNSConnect != m_vsDNSConnects.end(); ++iterDNSConnect)
+		for (iterDNSConnect = m_vsDNSConnects.begin(), i = 0; iterDNSConnect != m_vsDNSConnects.end(); ++iterDNSConnect, i++)
 		{
 			spDNSQueryResultItem = std::make_shared<DNSQueryResultItem>();
 			spDNSQureyWorkItem->m_vsDNSQueryResultItems.push_back(spDNSQueryResultItem);
-			if ((*iterDNSConnect)->SendDNSQueryBuffer(sDNSData) != true)
+			if (i != 0 && !ZoneTakesPart(*gConfig.m_vsZoneInfos[i], uQType))
+				spDNSQueryResultItem->m_eState = DNSQueryResultItem::ENUM_STATE_NOT_MATCH;
+			else if ((*iterDNSConnect)->SendDNSQueryBuffer(sDNSData) != true)
 				spDNSQueryResultItem->m_eState = DNSQueryResultItem::ENUM_STATE_ERROR;
 		}
 		m_mwDNSQureyWorkItems[nID] = spDNSQureyWorkItem;
@@ -167,6 +180,7 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsig
 	unsigned int nMatchCount = 0;
 	unsigned int nJudgedCount = 0;
 	unsigned short uReqType = 0;
+	bool bIsSVCB = false;
 	bool bUseV4 = false;
 	bool bUseV6 = false;
 
@@ -176,14 +190,18 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsig
 
 	uReqType = iterDNSQureyWorkItem->second->m_uQType;
 
-	// A 和 AAAA 是各走各的池，互不影响；SVCB/HTTPS 的 hint 两族一起看
-	bUseV4 = (uReqType == Rfc1035::DEF_TYPE_A ||
-		uReqType == Rfc1035::DEF_TYPE_SVCB || uReqType == Rfc1035::DEF_TYPE_HTTPS);
-	bUseV6 = (uReqType == Rfc1035::DEF_TYPE_AAAA ||
-		uReqType == Rfc1035::DEF_TYPE_SVCB || uReqType == Rfc1035::DEF_TYPE_HTTPS);
+	// A / AAAA 各看各的族；SVCB/HTTPS 的 hint 只看本 zone 有 ipList 的那一族
+	bIsSVCB = (uReqType == Rfc1035::DEF_TYPE_SVCB || uReqType == Rfc1035::DEF_TYPE_HTTPS);
+	bUseV4 = (uReqType == Rfc1035::DEF_TYPE_A || (bIsSVCB && gConfig.m_vsZoneInfos[nIndex]->m_bHasV4));
+	bUseV6 = (uReqType == Rfc1035::DEF_TYPE_AAAA || (bIsSVCB && gConfig.m_vsZoneInfos[nIndex]->m_bHasV6));
 
 	if (sDNSData.size() == 0)
 		iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_ERROR;
+	else if (ZoneTakesPart(*gConfig.m_vsZoneInfos[nIndex], uReqType) == false)
+	{
+		// 只为兜底问的第一个 zone
+		iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[nIndex]->m_eState = DNSQueryResultItem::ENUM_STATE_NOT_MATCH;
+	}
 	else if (Rfc1035::IsIPBearingType(uReqType) == false)
 	{
 		// 该类型不携带任何 IP，判不出归属，也就没法说它不属于本域，
@@ -201,16 +219,12 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsig
 	}
 	else
 	{
-		// 本 zone 对某个族完全没有条目时不计入分子分母，它对该族没有立场
 		if (bUseV4)
 		{
 			for (iterIP = luIPs.begin(); iterIP != luIPs.end(); ++iterIP)
 			{
-				EnumIPMatch eMatch = gConfig.CheckIsMatch(nIndex, (*iterIP));
-				if (eMatch == ENUM_IP_NO_OPINION)
-					continue;
 				nJudgedCount++;
-				if (eMatch == ENUM_IP_MATCH)
+				if (gConfig.CheckIsMatch(nIndex, (*iterIP)))
 					nMatchCount++;
 			}
 		}
@@ -219,11 +233,8 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsig
 		{
 			for (iterIP6 = luIP6s.begin(); iterIP6 != luIP6s.end(); ++iterIP6)
 			{
-				EnumIPMatch eMatch = gConfig.CheckIsMatch(nIndex, (*iterIP6).m_cAddr);
-				if (eMatch == ENUM_IP_NO_OPINION)
-					continue;
 				nJudgedCount++;
-				if (eMatch == ENUM_IP_MATCH)
+				if (gConfig.CheckIsMatch(nIndex, (*iterIP6).m_cAddr))
 					nMatchCount++;
 			}
 		}
@@ -274,15 +285,9 @@ void DNSQureyWork::DNSQueryResult(unsigned int nIndex, unsigned short nID, unsig
 
 	if (i == iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems.size())
 	{
-		// 都不符合，给优先级最高的合法的
-		for (i = 0; i < iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems.size(); i++)
-		{
-			if (iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[i]->m_eState == DNSQueryResultItem::ENUM_STATE_NOT_MATCH)
-			{
-				SendResult(i, uReqType, iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[i]->m_sDNSData);
-				break;
-			}
-		}
+		// 都不符合，给第一个 zone 的（它出错就不给）
+		if (iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[0]->m_eState == DNSQueryResultItem::ENUM_STATE_NOT_MATCH)
+			SendResult(0, uReqType, iterDNSQureyWorkItem->second->m_vsDNSQueryResultItems[0]->m_sDNSData);
 		Finish(nID);
 	}
 }

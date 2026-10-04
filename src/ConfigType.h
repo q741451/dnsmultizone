@@ -1,16 +1,6 @@
 #ifndef _CONFIG_TYPE_H
 #define _CONFIG_TYPE_H
 
-// 一条 ipList 对某个地址的判定结果。
-// NO_OPINION 表示这份表里没有该地址族的任何条目，也就谈不上"属于"或"不属于"，
-// 由上层按优先级处理，不能当成否定。
-enum EnumIPMatch
-{
-	ENUM_IP_NO_OPINION,
-	ENUM_IP_MATCH,
-	ENUM_IP_NOT_MATCH,
-};
-
 // IPv6 地址按网络字节序原样存放，字典序即数值序，排序/比较/二分全部用 memcmp
 class IPv6Addr
 {
@@ -74,16 +64,19 @@ public:
 	unsigned int m_nPrefix;
 };
 
+// 一份 ipList 只放一族地址，族由配置声明（family 4 / 6）
 class IPInfo
 {
 public:
 	IPInfo() {
+		m_nFamily = 0;
 		m_bIsDeny = false;
 		m_bIsInverseIPList = false;
 	}
 	bool LoadFile();
-	EnumIPMatch CheckIsMatch(unsigned int nIP);
-	EnumIPMatch CheckIsMatch(const unsigned char *cIP);
+	bool CheckIsMatch(unsigned int nIP);
+	bool CheckIsMatch(const unsigned char *cIP);
+	int m_nFamily;
 	bool m_bIsDeny;
 	bool m_bIsInverseIPList;
 	std::string m_sFileName;
@@ -113,6 +106,8 @@ public:
 		m_bIsDropIPv4 = false;
 		m_bIsDropIPv6 = false;
 		m_bIsUpstreamDown = false;
+		m_bHasV4 = false;
+		m_bHasV6 = false;
 	}
 	std::string m_sName;
 	unsigned int m_nPriority;
@@ -125,13 +120,16 @@ public:
 	bool m_bIsDropIPv4;
 	bool m_bIsDropIPv6;
 	bool m_bIsUpstreamDown;		// 已报过不可用，恢复前不再重复报
+	// 有没有这一族的 ipList：没有就不参与这一族的 A / AAAA，也不判 HTTPS 里这一族的 hint
+	bool m_bHasV4;
+	bool m_bHasV6;
 	struct sockaddr_storage m_ssDNSAddr;	// 上游地址，v4/v6 都放这里
 	unsigned short m_nDNSPort;
 	bool SetDNSAddrFromString(const char *cAddr);
 	void SetDNSPort(unsigned short nPort);
 	socklen_t GetDNSAddrLen() const;
-	EnumIPMatch CheckIsMatch(unsigned int nIP);
-	EnumIPMatch CheckIsMatch(const unsigned char *cIP);
+	bool CheckIsMatch(unsigned int nIP);
+	bool CheckIsMatch(const unsigned char *cIP);
 	std::vector<std::shared_ptr<IPInfo>> m_siIPInfos;
 };
 

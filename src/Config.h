@@ -11,8 +11,8 @@ public:
 	void Reset();
 	bool LoadConfig();
 	bool LoadConfigJson();
-	EnumIPMatch CheckIsMatch(unsigned int nIndex, unsigned int nIP);
-	EnumIPMatch CheckIsMatch(unsigned int nIndex, const unsigned char *cIP);
+	bool CheckIsMatch(unsigned int nIndex, unsigned int nIP);
+	bool CheckIsMatch(unsigned int nIndex, const unsigned char *cIP);
 	bool IsDenyNXDomain(unsigned int nIndex);
 	bool IsDropIPv4(unsigned int nIndex);
 	bool IsDropIPv6(unsigned int nIndex);

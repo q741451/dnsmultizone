@@ -80,6 +80,7 @@ bool IPInfo::LoadFile()
 	char cLineBuf[128];
 	char *cLine;
 	unsigned int nLen = sizeof(cLineBuf);
+	unsigned int nLineNo = 0;
 
 	bool ret = false;
 
@@ -91,37 +92,41 @@ bool IPInfo::LoadFile()
 
 	while ((cLine = fgets(cLineBuf, nLen, fpFile)))
 	{
+		IPItemInfo iiItem;
+		IPItemInfo6 iiItem6;
 		char *sp_pos;
+
+		nLineNo++;
 		sp_pos = strchr(cLine, '\r');
 		if (sp_pos) *sp_pos = 0;
 		sp_pos = strchr(cLine, '\n');
 		if (sp_pos) *sp_pos = 0;
 
-		if (strlen(cLine) > 0)
+		// 不是地址的行（注释等）照旧跳过；另一族的地址说明文件放错了
+		if (iiItem.SetFromString(cLine))
 		{
-			// 同一个文件里可以混放 v4/v6，按冒号分桶
-			if (strchr(cLine, ':') != NULL)
+			if (m_nFamily != 4)
 			{
-				std::shared_ptr<IPItemInfo6> spIPItem6 = std::make_shared<IPItemInfo6>();
-				if (spIPItem6->SetFromString(cLine) != true)
-					continue;
-				m_siIPItems6.push_back(spIPItem6);
+				SLOG_Error("ipList %s is IPv6, line %u is IPv4: %s", m_sFileName.c_str(), nLineNo, cLine);
+				goto end;
 			}
-			else
-			{
-				std::shared_ptr<IPItemInfo> spIPItem = std::make_shared<IPItemInfo>();
-				if(spIPItem->SetFromString(cLine) != true)
-					continue;
-				m_siIPItems.push_back(spIPItem);
-			}
+			m_siIPItems.push_back(std::make_shared<IPItemInfo>(iiItem));
 		}
-
+		else if (iiItem6.SetFromString(cLine))
+		{
+			if (m_nFamily != 6)
+			{
+				SLOG_Error("ipList %s is IPv4, line %u is IPv6: %s", m_sFileName.c_str(), nLineNo, cLine);
+				goto end;
+			}
+			m_siIPItems6.push_back(std::make_shared<IPItemInfo6>(iiItem6));
+		}
 	}
 	sort(m_siIPItems.begin(), m_siIPItems.end(), CompareIPItemInfo);
 	sort(m_siIPItems6.begin(), m_siIPItems6.end(), CompareIPItemInfo6);
 
-	SLOG_Info("Load ipList %s, IPv4 = %u, IPv6 = %u",
-		m_sFileName.c_str(), (unsigned int)m_siIPItems.size(), (unsigned int)m_siIPItems6.size());
+	SLOG_Info("Load ipList %s, IPv%d = %u", m_sFileName.c_str(), m_nFamily,
+		(unsigned int)(m_nFamily == 4 ? m_siIPItems.size() : m_siIPItems6.size()));
 
 	ret = true;
 end:
@@ -129,15 +134,14 @@ end:
 	return ret;
 }
 
-EnumIPMatch IPInfo::CheckIsMatch(unsigned int nIP)
+bool IPInfo::CheckIsMatch(unsigned int nIP)
 {
 	int nBegin = 0, nEnd = (int)m_siIPItems.size() - 1;
 	int nMid = 0, iCmpResult = 0;
 	bool ret = false;
 
-	// 这份表对 IPv4 没有任何条目，也就没有立场判定
 	if (m_siIPItems.size() == 0)
-		return ENUM_IP_NO_OPINION;
+		return m_bIsInverseIPList;
 
 	do
 	{
@@ -172,21 +176,17 @@ EnumIPMatch IPInfo::CheckIsMatch(unsigned int nIP)
 	}
 	while (nBegin != nEnd);
 
-	if (m_bIsInverseIPList)
-		ret = !ret;
-
-	return ret ? ENUM_IP_MATCH : ENUM_IP_NOT_MATCH;
+	return m_bIsInverseIPList ? !ret : ret;
 }
 
-EnumIPMatch IPInfo::CheckIsMatch(const unsigned char *cIP)
+bool IPInfo::CheckIsMatch(const unsigned char *cIP)
 {
 	int nBegin = 0, nEnd = (int)m_siIPItems6.size() - 1;
 	int nMid = 0, iCmpResult = 0;
 	bool ret = false;
 
-	// 这份表对 IPv6 没有任何条目，也就没有立场判定
 	if (m_siIPItems6.size() == 0)
-		return ENUM_IP_NO_OPINION;
+		return m_bIsInverseIPList;
 
 	do
 	{
@@ -221,10 +221,7 @@ EnumIPMatch IPInfo::CheckIsMatch(const unsigned char *cIP)
 	}
 	while (nBegin != nEnd);
 
-	if (m_bIsInverseIPList)
-		ret = !ret;
-
-	return ret ? ENUM_IP_MATCH : ENUM_IP_NOT_MATCH;
+	return m_bIsInverseIPList ? !ret : ret;
 }
 
 bool ZoneInfo::SetDNSAddrFromString(const char *cAddr)
@@ -263,55 +260,28 @@ socklen_t ZoneInfo::GetDNSAddrLen() const
 	return sizeof(struct sockaddr_in);
 }
 
-// 按 ipList 顺序逐条问，第一条有立场的说了算；全都没立场就是 NO_OPINION
-EnumIPMatch ZoneInfo::CheckIsMatch(unsigned int nIP)
+// 按 ipList 顺序只问这一族的表，第一条命中的说了算（deny 命中即否定）；
+// 都没命中就不属于本 zone
+bool ZoneInfo::CheckIsMatch(unsigned int nIP)
 {
 	std::vector<std::shared_ptr<IPInfo>>::iterator iterIPInfo;
-	bool bHasOpinion = false;
 
 	for (iterIPInfo = m_siIPInfos.begin(); iterIPInfo != m_siIPInfos.end(); ++iterIPInfo)
 	{
-		EnumIPMatch eMatch = (*iterIPInfo)->CheckIsMatch(nIP);
-
-		if (eMatch == ENUM_IP_NO_OPINION)
-			continue;
-
-		bHasOpinion = true;
-
-		if (eMatch == ENUM_IP_MATCH)
-		{
-			if ((*iterIPInfo)->m_bIsDeny)
-				return ENUM_IP_NOT_MATCH;
-			else
-				return ENUM_IP_MATCH;
-		}
+		if ((*iterIPInfo)->m_nFamily == 4 && (*iterIPInfo)->CheckIsMatch(nIP))
+			return !(*iterIPInfo)->m_bIsDeny;
 	}
-
-	return bHasOpinion ? ENUM_IP_NOT_MATCH : ENUM_IP_NO_OPINION;
+	return false;
 }
 
-EnumIPMatch ZoneInfo::CheckIsMatch(const unsigned char *cIP)
+bool ZoneInfo::CheckIsMatch(const unsigned char *cIP)
 {
 	std::vector<std::shared_ptr<IPInfo>>::iterator iterIPInfo;
-	bool bHasOpinion = false;
 
 	for (iterIPInfo = m_siIPInfos.begin(); iterIPInfo != m_siIPInfos.end(); ++iterIPInfo)
 	{
-		EnumIPMatch eMatch = (*iterIPInfo)->CheckIsMatch(cIP);
-
-		if (eMatch == ENUM_IP_NO_OPINION)
-			continue;
-
-		bHasOpinion = true;
-
-		if (eMatch == ENUM_IP_MATCH)
-		{
-			if ((*iterIPInfo)->m_bIsDeny)
-				return ENUM_IP_NOT_MATCH;
-			else
-				return ENUM_IP_MATCH;
-		}
+		if ((*iterIPInfo)->m_nFamily == 6 && (*iterIPInfo)->CheckIsMatch(cIP))
+			return !(*iterIPInfo)->m_bIsDeny;
 	}
-
-	return bHasOpinion ? ENUM_IP_NOT_MATCH : ENUM_IP_NO_OPINION;
+	return false;
 }

@@ -7,7 +7,7 @@
 <a id="english"></a>
 ## English
 
-An epoll-based multi-zone (multi-upstream) DNS forwarder for Linux. It can split DNS queries across different upstream DNS servers (`zoneList`) based on policies matching the destination IP ranges resolved, and supports hot-reloading the routing rule files (`ipList`) via inotify with no restart required.
+An epoll-based multi-zone (multi-upstream) DNS forwarder for Linux. It can split DNS queries across different upstream DNS servers (`zoneList`) based on policies matching the destination IP ranges resolved. A zone's upstream may come from a `resolv.conf`-style file, which is watched via inotify and reloaded on change.
 
 ### Features
 
@@ -45,7 +45,8 @@ See [`config/DNSMZConfig.json.example`](config/DNSMZConfig.json.example). Field 
 - `bindIP` / `serverPort`: local listen address and port. `::` serves IPv4 and IPv6 clients on one socket
 - `zoneList`: routing rule groups, matched in ascending `priority` order
   - `dnsIP` / `dnsPort`: the upstream DNS used by this zone, IPv4 or IPv6 (or use `resolvFile` to point at a `resolv.conf`-style file that is auto-watched for changes)
-  - `ipList`: list of IP-range rule files that must match for this zone to hit; `inverseIPList` inverts the match, `deny` rejects on match. IPv4 and IPv6 entries may be mixed in one file, and a file with no entry of a given family has no say about that family
+  - `ipList`: list of IP-range rule files that must match for this zone to hit; `inverseIPList` inverts the match, `deny` rejects on match. `family` (`4` or `6`, required) says which family the file holds; an address of the other family in it is an error. A zone takes part in A / AAAA queries only if it has a list of that family, and judges the SVCB / HTTPS hints of those families only; zones not taking part are not asked
+  - When no zone's answer matches, the first zone's answer is returned (the first zone is always asked); if the first zone failed, nothing is returned
   - `denyNXDomain`: optional, default `false`. Set it only for an upstream that blocks domains by answering `NXDOMAIN`, so that answer falls through to the next zone instead of being returned as-is
   - `dropIPv4` / `dropIPv6`: optional, default `false`, for a zone whose exit lacks that family. When this zone's answer wins: A / AAAA answers come back empty, SVCB / HTTPS lose only `ipv4hint` / `ipv6hint` (ALPN stays)
 
@@ -105,7 +106,7 @@ Released under [GPL-3.0](LICENSE).
 <a id="中文"></a>
 ## 中文
 
-基于 epoll 实现的 Linux 多分区（多上游）DNS 转发服务。可根据目标域名解析结果所属 IP 段等策略，将 DNS 查询分流到不同的上游 DNS 服务器（`zoneList`），并支持通过 `ipList` 文件热更新（inotify 监听）分流规则，无需重启。
+基于 epoll 实现的 Linux 多分区（多上游）DNS 转发服务。可根据目标域名解析结果所属 IP 段等策略，将 DNS 查询分流到不同的上游 DNS 服务器（`zoneList`）。Zone 的上游可以取自 `resolv.conf` 风格的文件，用 inotify 监听，变化后重新读取。
 
 ### 特性
 
@@ -143,7 +144,8 @@ make
 - `bindIP` / `serverPort`：本地监听地址和端口。填 `::` 时一个 socket 同时服务 IPv4 和 IPv6 客户端
 - `zoneList`：按 `priority` 从小到大依次匹配的分流规则组
   - `dnsIP` / `dnsPort`：该 Zone 使用的上游 DNS，IPv4 或 IPv6 均可（也可用 `resolvFile` 指向一个 `resolv.conf` 风格文件，自动监听变化）
-  - `ipList`：命中该 Zone 需要满足的 IP 段规则文件列表，`inverseIPList` 表示反选，`deny` 表示命中即拒绝。同一文件内可混放 IPv4 与 IPv6 条目，不含某一族条目的文件对该族地址不作判定
+  - `ipList`：命中该 Zone 需要满足的 IP 段规则文件列表，`inverseIPList` 表示反选，`deny` 表示命中即拒绝。`family`（`4` 或 `6`，必填）声明文件里是哪一族地址，混入另一族即报错。Zone 有某一族的列表才参与该族的 A / AAAA 查询，SVCB / HTTPS 也只判它有列表的那一族的 hint；不参与的 Zone 不发查询
+  - 所有 Zone 的应答都不匹配时，返回第一个 Zone 的应答（第一个 Zone 总会查询）；它出错则不返回
   - `denyNXDomain`：可选，默认 `false`。仅在上游用 `NXDOMAIN` 屏蔽域名时开启，使该应答顺延到下一个 Zone，而不是如实返回
   - `dropIPv4` / `dropIPv6`：可选，默认 `false`，用于出口缺这一族的 Zone。本 Zone 的应答胜出时：A / AAAA 应答清空，SVCB / HTTPS 只去掉 `ipv4hint` / `ipv6hint`（ALPN 保留）
 

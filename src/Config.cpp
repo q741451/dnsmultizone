@@ -201,11 +201,18 @@ bool Config::LoadConfigJson()
 			cJSON* cjDeny = cJSON_GetObjectItemCaseSensitive(cjIP, "deny");
 			cJSON *cjIPIsInverse = cJSON_GetObjectItemCaseSensitive(cjIP, "inverseIPList");
 			cJSON *cjIPFile = cJSON_GetObjectItemCaseSensitive(cjIP, "file");
+			cJSON *cjFamily = cJSON_GetObjectItemCaseSensitive(cjIP, "family");
 
 			std::shared_ptr<IPInfo> spIPInfo;
 
 			if (!cJSON_IsBool(cjIPEnable) || !cJSON_IsBool(cjIPIsInverse)  || !cJSON_IsString(cjIPFile))
 				goto end;
+
+			if (!cJSON_IsNumber(cjFamily) || (cjFamily->valueint != 4 && cjFamily->valueint != 6))
+			{
+				SLOG_Error("zone %s: ipList %s needs family 4 or 6", cjName->valuestring, cjIPFile->valuestring);
+				goto end;
+			}
 
 			if (!cJSON_IsTrue(cjIPEnable))
 				continue;
@@ -216,6 +223,7 @@ bool Config::LoadConfigJson()
 			if (cJSON_IsBool(cjDeny))
 				spIPInfo->m_bIsDeny = cJSON_IsTrue(cjDeny) ? true : false;
 			spIPInfo->m_sFileName = cjIPFile->valuestring;
+			spIPInfo->m_nFamily = cjFamily->valueint;
 
 			if (spIPInfo->LoadFile() != true)
 			{
@@ -223,6 +231,10 @@ bool Config::LoadConfigJson()
 				goto end;
 			}
 
+			if (spIPInfo->m_nFamily == 4)
+				spZoneInfo->m_bHasV4 = true;
+			else
+				spZoneInfo->m_bHasV6 = true;
 			spZoneInfo->m_siIPInfos.push_back(spIPInfo);
 		}
 
@@ -237,12 +249,12 @@ end:
 	return ret;
 }
 
-EnumIPMatch Config::CheckIsMatch(unsigned int nIndex, unsigned int nIP)
+bool Config::CheckIsMatch(unsigned int nIndex, unsigned int nIP)
 {
 	return m_vsZoneInfos[nIndex]->CheckIsMatch(nIP);
 }
 
-EnumIPMatch Config::CheckIsMatch(unsigned int nIndex, const unsigned char *cIP)
+bool Config::CheckIsMatch(unsigned int nIndex, const unsigned char *cIP)
 {
 	return m_vsZoneInfos[nIndex]->CheckIsMatch(cIP);
 }
