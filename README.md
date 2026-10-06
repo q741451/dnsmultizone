@@ -15,7 +15,7 @@ An epoll-based multi-zone (multi-upstream) DNS forwarder for Linux. It can split
 - Multi-zone (multi-upstream DNS) query splitting/forwarding
 - Splits on A, AAAA and the `ipv4hint`/`ipv6hint` carried by SVCB/HTTPS records
 - Dual-stack: listens on IPv4 and IPv6, upstreams may be either family
-- Routing rule files support inotify hot-reload, no restart needed
+- `ipList` files are read at start; restart after editing them
 - Pure C++11 + POSIX syscalls, no third-party dependencies, fully static-linkable
 - Single JSON config file, parsed with the bundled cJSON
 
@@ -114,7 +114,7 @@ Released under [GPL-3.0](LICENSE).
 - 多 Zone（多上游 DNS）分流转发
 - 分流依据涵盖 A、AAAA，以及 SVCB/HTTPS 记录携带的 `ipv4hint`/`ipv6hint`
 - 双栈：监听端同时服务 IPv4 与 IPv6，上游地址两族皆可
-- 分流规则文件支持 inotify 热加载，无需重启
+- `ipList` 文件在启动时读取，修改后需重启
 - 纯 C++11 + POSIX 系统调用实现，无第三方依赖，可完全静态编译
 - 单文件配置（JSON），基于内置的 cJSON 解析
 
