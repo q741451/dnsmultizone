@@ -8,7 +8,7 @@
 int gFdExitEvent = -1;
 int gFdEPollExit = -1;
 
-static void SigEventInt(int sig)
+static void SigEventInt(int)
 {
 	if(gFdEPollExit != -1 && gFdExitEvent != -1)
 		modfd(gFdEPollExit, gFdExitEvent, EPOLLOUT);
@@ -167,12 +167,20 @@ int main(int argc, char *argv[])
 	if (gConfig.m_bIsBackMode)
 	{
 		SLOG_Info("Enter background mode running");
-		daemon(1, gConfig.m_sFileLog.size() > 0 ? 1 : 0);
+		if (daemon(1, gConfig.m_sFileLog.size() > 0 ? 1 : 0) != 0)
+		{
+			SLOG_Error("daemon Fail");
+			goto end;
+		}
 		if (gConfig.m_sFileLog.size() > 0)
 		{
-			freopen(gConfig.m_sFileLog.c_str(), "w", stdout);
+			if (freopen(gConfig.m_sFileLog.c_str(), "w", stdout) == NULL ||
+				freopen(gConfig.m_sFileLog.c_str(), "a", stderr) == NULL)
+			{
+				SLOG_Error("Open log file %s Fail", gConfig.m_sFileLog.c_str());
+				goto end;
+			}
 			setvbuf(stdout, (char *)NULL, _IOLBF, BUFSIZ);
-			freopen(gConfig.m_sFileLog.c_str(), "a", stderr);
 			SLog::SetTimestamp(true);
 		}
 	}

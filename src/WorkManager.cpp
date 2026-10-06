@@ -47,8 +47,7 @@ void WorkManager::ClearTimeout()
 
 	for (iterDNSQureyWork = m_mssKeyValuePairs.begin(); iterDNSQureyWork != m_mssKeyValuePairs.end(); )
 	{
-		if(llNow - iterDNSQureyWork->second->m_llLastTouch < 0 ||
-			llNow - iterDNSQureyWork->second->m_llLastTouch > DEF_TIME_OUT)
+		if (llNow - iterDNSQureyWork->second->m_llLastTouch > DEF_TIME_OUT)
 		{
 			iterDNSQureyWork->second->Exit();
 			m_mssKeyValuePairs.erase(iterDNSQureyWork++);
