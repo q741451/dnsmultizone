@@ -3,7 +3,7 @@
 ServerConnect::ServerConnect()
 {
 	m_ifInterface = NULL;
-	memset(&m_addrClient, 0, sizeof(m_addrClient));
+	memset(&m_raReply, 0, sizeof(m_raReply));
 }
 
 void ServerConnect::SetInterface(InterfaceServerConnect *ifInterface)
@@ -13,7 +13,14 @@ void ServerConnect::SetInterface(InterfaceServerConnect *ifInterface)
 
 void ServerConnect::Init(const sockaddr_storage &addrClient)
 {
-	m_addrClient = addrClient;
+	m_raReply.ssClient = addrClient;
+}
+
+void ServerConnect::SetLocalAddr(const in6_pktinfo *pLocal)
+{
+	m_raReply.bHasLocal = pLocal != NULL;
+	if (pLocal)
+		m_raReply.piLocal = *pLocal;
 }
 
 void ServerConnect::OnRecvData(std::string &sDNSData)
@@ -31,5 +38,5 @@ void ServerConnect::OnRecvData(std::string &sDNSData)
 
 bool ServerConnect::SendDNSResultBuffer(std::string &sBuffer)
 {
-	return gServer.SendTo(m_addrClient, sBuffer);
+	return gServer.SendTo(m_raReply, sBuffer);
 }

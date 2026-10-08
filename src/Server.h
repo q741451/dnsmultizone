@@ -15,7 +15,7 @@ public:
 	// 共享监听 socket：收所有客户端的查询，按来源地址交给事务；应答也从它发回
 	void OnListenRead();
 	void OnListenWrite();
-	bool SendTo(const sockaddr_storage &ssAddr, const std::string &sData);
+	bool SendTo(const ReplyAddr &raAddr, const std::string &sData);
 
 	std::shared_ptr<ConnectionManager> m_spConnectionManager;	// 上游 socket
 	std::shared_ptr<WorkManager> m_spWorkManager;
@@ -26,7 +26,7 @@ private:
 	void UpdateListenEvents();
 
 	// 发送缓冲满时暂存的应答
-	std::list<std::pair<sockaddr_storage, std::string>> m_lsSendQueue;
+	std::list<std::pair<ReplyAddr, std::string>> m_lsSendQueue;
 };
 
 extern Server gServer;

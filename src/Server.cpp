@@ -15,11 +15,13 @@ static void SigEventInt(int)
 }
 
 // 监听 socket：SO_REUSEADDR 允许别的实例绑定同一端口（包只交给其中一个）。绑到 IPv6 地址时
-// 关掉 V6ONLY 走双栈，必须显式设置：net.ipv6.bindv6only 可能被系统改成 1，不能依赖内核默认值
+// 关掉 V6ONLY 走双栈，必须显式设置：net.ipv6.bindv6only 可能被系统改成 1，不能依赖内核默认值；
+// 并打开 IPV6_RECVPKTINFO，取每个查询发到的本机地址（见 SendReply）
 static bool CreateSockServer(const struct sockaddr_storage &ssBind, socklen_t slBindLen, int *pFd)
 {
 	int iReuse = 1;
 	int iV6Only = 0;
+	int iPktInfo = 1;
 
 	if ((*pFd = socket(ssBind.ss_family, SOCK_DGRAM, 0)) == -1)
 		return false;
@@ -28,7 +30,8 @@ static bool CreateSockServer(const struct sockaddr_storage &ssBind, socklen_t sl
 		return false;
 
 	if (ssBind.ss_family == AF_INET6 &&
-		setsockopt(*pFd, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&iV6Only, sizeof(iV6Only)) != 0)
+		(setsockopt(*pFd, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&iV6Only, sizeof(iV6Only)) != 0 ||
+		setsockopt(*pFd, IPPROTO_IPV6, IPV6_RECVPKTINFO, (char*)&iPktInfo, sizeof(iPktInfo)) != 0))
 		return false;
 
 	return bind(*pFd, (struct sockaddr*)&ssBind, slBindLen) == 0;
@@ -39,11 +42,63 @@ static socklen_t AddrLen(const sockaddr_storage &ssAddr)
 	return ssAddr.ss_family == AF_INET6 ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
 }
 
+// IPv6 查询发到的本机地址；IPv4（含双栈 socket 上的 v4-mapped）不取，照旧由内核选源地址
+static bool GetLocalAddr(msghdr &mhMsg, const sockaddr_storage &ssClient, in6_pktinfo *pLocal)
+{
+	cmsghdr *pCmsg = NULL;
+
+	if (ssClient.ss_family != AF_INET6 || IN6_IS_ADDR_V4MAPPED(&((const sockaddr_in6*)&ssClient)->sin6_addr))
+		return false;
+
+	for (pCmsg = CMSG_FIRSTHDR(&mhMsg); pCmsg != NULL; pCmsg = CMSG_NXTHDR(&mhMsg, pCmsg))
+	{
+		if (pCmsg->cmsg_level == IPPROTO_IPV6 && pCmsg->cmsg_type == IPV6_PKTINFO)
+		{
+			memcpy(pLocal, CMSG_DATA(pCmsg), sizeof(*pLocal));
+			return true;
+		}
+	}
+	return false;
+}
+
+// IPv6 应答从查询发到的本机地址发出。查询被 REDIRECT 过来时，目的地址改成了接口上的第一个
+// 地址；接口有多个前缀时内核按客户端另选的源地址可能不同，回包对不上 conntrack，客户端收不到
+static ssize_t SendReply(int fd, const ReplyAddr &raAddr, const std::string &sData)
+{
+	char cControl[CMSG_SPACE(sizeof(in6_pktinfo))];
+	iovec ivData;
+	msghdr mhMsg;
+	cmsghdr *pCmsg = NULL;
+
+	if (!raAddr.bHasLocal)
+		return sendto(fd, sData.c_str(), sData.size(), 0, (const sockaddr*)&raAddr.ssClient, AddrLen(raAddr.ssClient));
+
+	ivData.iov_base = (void*)sData.c_str();
+	ivData.iov_len = sData.size();
+	memset(&mhMsg, 0, sizeof(mhMsg));
+	memset(cControl, 0, sizeof(cControl));
+	mhMsg.msg_name = (void*)&raAddr.ssClient;
+	mhMsg.msg_namelen = AddrLen(raAddr.ssClient);
+	mhMsg.msg_iov = &ivData;
+	mhMsg.msg_iovlen = 1;
+	mhMsg.msg_control = cControl;
+	mhMsg.msg_controllen = sizeof(cControl);
+	pCmsg = CMSG_FIRSTHDR(&mhMsg);
+	pCmsg->cmsg_level = IPPROTO_IPV6;
+	pCmsg->cmsg_type = IPV6_PKTINFO;
+	pCmsg->cmsg_len = CMSG_LEN(sizeof(in6_pktinfo));
+	memcpy(CMSG_DATA(pCmsg), &raAddr.piLocal, sizeof(in6_pktinfo));
+	return sendmsg(fd, &mhMsg, 0);
+}
+
 void Server::OnListenRead()
 {
 	std::string sBuffer;
 	sockaddr_storage addrClient;
-	socklen_t slClient = 0;
+	char cControl[CMSG_SPACE(sizeof(in6_pktinfo))];
+	iovec ivData;
+	msghdr mhMsg;
+	in6_pktinfo piLocal;
 	std::string sKey;
 	WorkManager::ITEM_TYPE spDNSQureyWork;
 	int iLen = 0;
@@ -52,8 +107,16 @@ void Server::OnListenRead()
 	for (i = 0; i < DEF_READ_PER_EVENT; i++)
 	{
 		sBuffer.resize(DEF_CLIENT_PKG_LEN);
-		slClient = sizeof(addrClient);
-		if ((iLen = recvfrom(m_fdListen, (char*)sBuffer.c_str(), (int)sBuffer.size(), 0, (sockaddr*)&addrClient, &slClient)) <= 0)
+		ivData.iov_base = (void*)sBuffer.c_str();
+		ivData.iov_len = sBuffer.size();
+		memset(&mhMsg, 0, sizeof(mhMsg));
+		mhMsg.msg_name = &addrClient;
+		mhMsg.msg_namelen = sizeof(addrClient);
+		mhMsg.msg_iov = &ivData;
+		mhMsg.msg_iovlen = 1;
+		mhMsg.msg_control = cControl;
+		mhMsg.msg_controllen = sizeof(cControl);
+		if ((iLen = recvmsg(m_fdListen, &mhMsg, 0)) <= 0)
 			break;
 		sBuffer.resize(iLen);
 
@@ -69,6 +132,7 @@ void Server::OnListenRead()
 			}
 		}
 
+		spDNSQureyWork->m_spServerConnect->SetLocalAddr(GetLocalAddr(mhMsg, addrClient, &piLocal) ? &piLocal : NULL);
 		spDNSQureyWork->m_spServerConnect->OnRecvData(sBuffer);
 	}
 }
@@ -77,8 +141,7 @@ void Server::OnListenWrite()
 {
 	while (m_lsSendQueue.size() > 0)
 	{
-		if (sendto(m_fdListen, m_lsSendQueue.front().second.c_str(), (int)m_lsSendQueue.front().second.size(), 0,
-			(const sockaddr*)&m_lsSendQueue.front().first, AddrLen(m_lsSendQueue.front().first)) < 0 &&
+		if (SendReply(m_fdListen, m_lsSendQueue.front().first, m_lsSendQueue.front().second) < 0 &&
 			(errno == EINTR || errno == EWOULDBLOCK || errno == EAGAIN))
 			break;
 		// 发出去了，或者是发不出去的错误：都不再留着
@@ -88,17 +151,17 @@ void Server::OnListenWrite()
 	UpdateListenEvents();
 }
 
-bool Server::SendTo(const sockaddr_storage &ssAddr, const std::string &sData)
+bool Server::SendTo(const ReplyAddr &raAddr, const std::string &sData)
 {
 	if (m_lsSendQueue.size() == 0)
 	{
-		if (sendto(m_fdListen, sData.c_str(), (int)sData.size(), 0, (const sockaddr*)&ssAddr, AddrLen(ssAddr)) >= 0)
+		if (SendReply(m_fdListen, raAddr, sData) >= 0)
 			return true;
 		if (errno != EINTR && errno != EWOULDBLOCK && errno != EAGAIN)
 			return false;
 	}
 
-	m_lsSendQueue.push_back(std::make_pair(ssAddr, sData));
+	m_lsSendQueue.push_back(std::make_pair(raAddr, sData));
 	UpdateListenEvents();
 	return true;
 }

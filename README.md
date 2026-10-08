@@ -42,7 +42,7 @@ Command-line options:
 
 See [`config/DNSMZConfig.json.example`](config/DNSMZConfig.json.example). Field reference:
 
-- `bindIP` / `serverPort`: local listen address and port. `::` serves IPv4 and IPv6 clients on one socket
+- `bindIP` / `serverPort`: local listen address and port. `::` serves IPv4 and IPv6 clients on one socket. An IPv6 answer leaves from the address the query was sent to, so queries redirected (REDIRECT) to the port are answered correctly on an interface with several IPv6 prefixes
 - `zoneList`: routing rule groups, matched in ascending `priority` order
   - `dnsIP` / `dnsPort`: the upstream DNS used by this zone, IPv4 or IPv6 (or use `resolvFile` to point at a `resolv.conf`-style file that is auto-watched for changes)
   - `ipList`: list of IP-range rule files that must match for this zone to hit; `inverseIPList` inverts the match, `deny` rejects on match. `family` (`4` or `6`, required) says which family the file holds; an address of the other family in it is an error. One address or CIDR per line; `#` starts a comment and whitespace is ignored; anything else is an error. A zone takes part in A / AAAA queries only if it has a list of that family, and judges the SVCB / HTTPS hints of those families only; zones not taking part are not asked
@@ -141,7 +141,7 @@ make
 
 参见 [`config/DNSMZConfig.json.example`](config/DNSMZConfig.json.example)，字段说明：
 
-- `bindIP` / `serverPort`：本地监听地址和端口。填 `::` 时一个 socket 同时服务 IPv4 和 IPv6 客户端
+- `bindIP` / `serverPort`：本地监听地址和端口。填 `::` 时一个 socket 同时服务 IPv4 和 IPv6 客户端。IPv6 应答从查询发到的那个地址发出，接口有多个 IPv6 前缀时，REDIRECT 到这个端口的查询也能正确应答
 - `zoneList`：按 `priority` 从小到大依次匹配的分流规则组
   - `dnsIP` / `dnsPort`：该 Zone 使用的上游 DNS，IPv4 或 IPv6 均可（也可用 `resolvFile` 指向一个 `resolv.conf` 风格文件，自动监听变化）
   - `ipList`：命中该 Zone 需要满足的 IP 段规则文件列表，`inverseIPList` 表示反选，`deny` 表示命中即拒绝。`family`（`4` 或 `6`，必填）声明文件里是哪一族地址，混入另一族即报错。文件每行一个地址或网段，`#` 起为注释，空白忽略，其他内容即报错。Zone 有某一族的列表才参与该族的 A / AAAA 查询，SVCB / HTTPS 也只判它有列表的那一族的 hint；不参与的 Zone 不发查询
